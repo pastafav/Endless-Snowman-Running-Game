@@ -17,6 +17,17 @@ import pygame
 # Asset cache and loader -------------------------------------------------------
 _asset_cache: dict[tuple[Path, int | None], pygame.Surface] = {}
 
+# Sound
+pygame.mixer.init()
+item_collect_sound = pygame.mixer.Sound("sound/item_collected.wav")
+present_collect_sound = pygame.mixer.Sound("sound/present_collected.wav")
+hit_sound = pygame.mixer.Sound("sound/obstacles_hit.wav")
+game_over_sound = pygame.mixer.Sound("sound/failing.wav")
+present_collect_sound.set_volume(0.1) 
+item_collect_sound.set_volume(0.1) 
+hit_sound.set_volume(0.2) 
+game_over_sound.set_volume(0.1)
+
 def load_image(path: Path, size: int | None = None) -> pygame.Surface:
     key = (path, size)
     if key in _asset_cache:
@@ -67,13 +78,15 @@ class Obstacle(FallingSprite):
     def on_player_hit(self, state):
         # Placeholder: implement obstacle penalty later in player/effects system
         pass
-
+        hit_sound.play()
 class PresentItem(FallingSprite):
     def __init__(self, *args, score_value: int = 1, **kwargs):
         super().__init__(*args, **kwargs)
         self._score_value = score_value
     def on_collect(self, state):
         state['score'] = state.get('score', 0) + self._score_value
+        present_collect_sound.play()
+
 
 class SpecialBuff(FallingSprite):
     def __init__(self, *args, buff_type: str, bonus: int = 5, **kwargs):
@@ -84,6 +97,7 @@ class SpecialBuff(FallingSprite):
         # Default effect: add bonus score and mark active buff
         state['score'] = state.get('score', 0) + self._bonus
         state['active_buff'] = self.buff_type
+        item_collect_sound.play()
         # Special-case: Icecube restores 'melt' (survival) in hell map
         try:
             if self.buff_type.lower().startswith('icecube'):

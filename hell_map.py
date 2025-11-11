@@ -38,12 +38,13 @@ OBSTACLE_PATHS = [Path("image/TreeOnFire_2.png"), Path("image/Lava_2.png"), Path
 PRESENT_PATH = Path("image/Present_1.png")
 SPECIAL_PATHS = [Path("image/Moose_item_1.png"), Path("image/Carrot_1.png"), Path("image/Icecube_1.png")]
 
-PRESENT_SIZE = 56
-OBSTACLE_SIZE = 75
+PRESENT_SIZE = 80
+OBSTACLE_SIZE = 100
 SPECIAL_SIZE = 80
 ASSET_SIZE_OVERRIDES = {
-	"IceShards_1": 120,
-	"Moose_item_1": 130,
+	 "IceShards_1": 200,
+    "Moose_item_1": 170,
+    "TreeOnFire_2": 200,
 }
 
 OBSTACLE_SPEED = 260
@@ -63,6 +64,11 @@ OFFSCREEN_BUFFER = 40
 
 RELATIVE_SCROLL_MODE = True
 RELATIVE_EXTRA_SPEED_FACTOR = 1.0
+
+# --- BG Music ---
+pygame.mixer.music.load("sound/hellmode_bm.mp3") 
+pygame.mixer.music.play(loops=-1)
+pygame.mixer.music.set_volume(0.2)
 
 
 def load_bg(path: Path) -> pygame.Surface:

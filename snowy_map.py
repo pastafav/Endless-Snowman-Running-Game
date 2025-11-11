@@ -36,6 +36,13 @@ screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Snow Survivor - Map (Top-down)")
 clock = pygame.time.Clock()
 font = pygame.font.SysFont("Consolas", 20)
+pygame.mixer.init()
+
+# --- BG Music ---
+pygame.mixer.music.load("sound/snowy_bm.mp3") 
+pygame.mixer.music.play(loops=-1)
+pygame.mixer.music.set_volume(0.2)
+
 
 # --- Load & prepare background image ---
 def load_bg(path):
@@ -112,8 +119,9 @@ HELL_OBSTACLE_PATHS = [Path("image/TreeOnFire_2.png"), Path("image/Lava_2.png"),
 HELL_PRESENT_PATH = Path("image/Present_1.png")  # duplicate explicit path (avoid forward reference issues)
 HELL_SPECIAL_PATHS = [Path("image/Moose_item_1.png"), Path("image/Carrot_1.png"), Path("image/Icecube_1.png")]  # reuse specials
 HELL_ASSET_SIZE_OVERRIDES = {
-    "IceShards_1": 120,
-    "Moose_item_1": 130,
+    "IceShards_1": 200,
+    "Moose_item_1": 170,
+    "TreeOnFire_2": 200,
 }
 
 # Transition items
@@ -126,14 +134,15 @@ HELL_SPECIAL_INTERVAL_RANGE = (2.0, 4.0)  # make specials (icecubes) appear freq
 HELL_INITIAL_MELT = 25.0  # seconds of survival when entering hell
 ICECUBE_MELT_ADD = 12.0   # seconds added per icecube
 
-PRESENT_SIZE = 56
-OBSTACLE_SIZE = 75   # base size for generic obstacles (Tree)
+PRESENT_SIZE = 80
+OBSTACLE_SIZE = 100 # base size for generic obstacles (Tree)
 SPECIAL_SIZE = 80     # base size for specials (Carrot)
 
 # Asset-specific overrides (stem -> size) for fine control
 ASSET_SIZE_OVERRIDES = {
-    "IceShards_1": 120,      # significantly larger for visibility
-    "Moose_item_1": 130,     # larger moose item
+    "IceShards_1": 200,      # significantly larger for visibility
+    "Moose_item_1": 170,     # larger moose item
+    "Tree_1": 200,
 }
 
 OBSTACLE_SPEED = 260
@@ -380,6 +389,10 @@ while running:
                 show_start = False
             elif ev.key == pygame.K_p:
                 paused = not paused
+                if paused:
+                    pygame.mixer.music.pause()
+                else:
+                    pygame.mixer.music.unpause()
             elif ev.key in (pygame.K_LEFT, pygame.K_a):
                 if not paused:
                     player.move_left()
