@@ -24,7 +24,7 @@ present_collect_sound = pygame.mixer.Sound("sound/present_collected.wav")
 hit_sound = pygame.mixer.Sound("sound/obstacles_hit.wav")
 game_over_sound = pygame.mixer.Sound("sound/failing.wav")
 present_collect_sound.set_volume(0.1) 
-item_collect_sound.set_volume(0.1) 
+item_collect_sound.set_volume(0.2) 
 hit_sound.set_volume(0.2) 
 game_over_sound.set_volume(0.1)
 
