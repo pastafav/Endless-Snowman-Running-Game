@@ -184,8 +184,7 @@ def main():
 
     # Values captured at the moment of death for summary
     summary_time_sec = 0.0
-    summary_label = "Presents"
-    summary_count = 0
+    summary_presents = 0  # <— always show presents regardless of scene
 
     while running:
         now = time.perf_counter()
@@ -200,14 +199,9 @@ def main():
         if not show_game_over_menu and manager.is_game_over():
             show_game_over_menu = True
             pygame.event.clear([pygame.KEYDOWN, pygame.KEYUP])
-            # Snapshot summary
+            # Snapshot summary (ALWAYS presents + time, regardless of scene)
             summary_time_sec = manager.get_run_seconds()
-            if manager.current_name == "hell":
-                summary_label = "Ice"
-                summary_count = manager.shared.get("ice", 0)
-            else:
-                summary_label = "Presents"
-                summary_count = manager.shared.get("presents", 0)
+            summary_presents = manager.shared.get("presents", 0)
             print("[UI] Game Over menu opened")
 
         # ── event handling ───────────────────────────────────────────────────
@@ -292,10 +286,10 @@ def main():
 
             big = pygame.font.SysFont("consolas", 36, bold=True)
             small = pygame.font.SysFont("consolas", 24)
-            # Left: count
-            txt1 = big.render(f"{summary_label}: {summary_count}", True, (30, 30, 30))
+            # Always show Presents (from shared) and Time Played
+            txt1 = big.render(f"Presents: {summary_presents}", True, (30, 30, 30))
             screen.blit(txt1, txt1.get_rect(midleft=(panel_rect.left + 30, panel_rect.centery - 20)))
-            # Right: time
+
             txt2 = small.render(f"Time Played: {fmt_mmss(summary_time_sec)}", True, (30, 30, 30))
             screen.blit(txt2, txt2.get_rect(midleft=(panel_rect.left + 30, panel_rect.centery + 24)))
 
