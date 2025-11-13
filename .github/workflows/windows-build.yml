@@ -18,17 +18,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Set up Python 3.11 (more compatible)
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.11'
 
-      - name: Install dependencies
+      - name: Install dependencies (pinned)
         shell: pwsh
         run: |
           python -m pip install -U pip
+          # Pin pygame and PyInstaller to known-stable versions for Windows
+          python -m pip install "pygame==2.6.1" "pyinstaller==6.16.0" pyinstaller-hooks-contrib
           if (Test-Path requirements.txt) { python -m pip install -r requirements.txt }
-          if (Test-Path requirements-build.txt) { python -m pip install -r requirements-build.txt } else { python -m pip install pyinstaller }
+          if (Test-Path requirements-build.txt) { python -m pip install -r requirements-build.txt }
 
       - name: Build with PyInstaller
         shell: pwsh
@@ -58,3 +60,13 @@ If SmartScreen warns, click More info → Run anyway.
         with:
           name: SnowSurvivor-Windows
           path: dist/SnowSurvivor-win
+
+      - name: Upload logs on failure
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: SnowSurvivor-Windows-logs
+          path: |
+            build/**
+            dist/**
+            **/warn-*.txt
