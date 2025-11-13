@@ -225,7 +225,7 @@ def main():
                         running = False
                         continue
                 else:
-                    # Scene switching hotkeys only while playing
+                    # Scene switching hotkeys only while playing (still allowed)
                     if event.key in (pygame.K_1, pygame.K_F1):
                         manager.switch_to("snowy", reset=True)
                         elapsed_since_switch = 0.0
@@ -241,21 +241,41 @@ def main():
                 quit_btn.handle_event(event)
 
         # ── auto-switch while playing ────────────────────────────────────────
-        if not show_game_over_menu and elapsed_since_switch >= SWITCH_INTERVAL:
-            next_scene = "hell" if manager.current_name == "snowy" else "snowy"
-            print(f"[Timer] Switching to {next_scene}")
-            manager.switch_to(next_scene, reset=True)
+        # IMPORTANT: auto-switch ONLY happens in HELL.
+        if (
+            not show_game_over_menu
+            and manager.current_name == "hell"
+            and elapsed_since_switch >= SWITCH_INTERVAL
+        ):
+            print("[Timer] Auto-switching from HELL to SNOWY")
+            manager.switch_to("snowy", reset=True)
             elapsed_since_switch = 0.0
 
-        # ── update & draw scene ─────────────────────────────────────────────
+        # ── update & handle scene-requests ───────────────────────────────────
         if not show_game_over_menu:
             manager.update(dt)
+
+            # Check if any scene requested a next scene via shared["_next_scene"]
+            req = manager.shared.pop("_next_scene", None)
+            if req and not manager.is_game_over():
+                # For your design: Snowy → Hell only after igloo minigame finishes
+                print(f"[SceneRequest] Scene requested switch to '{req}'")
+                manager.switch_to(req, reset=True)
+                elapsed_since_switch = 0.0  # reset auto-switch timer for the new scene
+
+        # ── draw scene ───────────────────────────────────────────────────────
         manager.draw()
 
         # ── persistent HUD (top-left) while playing or menu ────────────────
+        # Auto switch countdown only matters in Hell; show generic otherwise
+        if manager.current_name == "hell":
+            txt_switch = f"Auto switch to SNOWY in {max(0.0, SWITCH_INTERVAL - elapsed_since_switch):.1f}s"
+        else:
+            txt_switch = "Auto switch: only active in HELL"
+
         draw_overlay(
             screen,
-            f"Scene: {manager.current_name.upper()} | Auto switch in {max(0.0, SWITCH_INTERVAL - elapsed_since_switch):.1f}s",
+            f"Scene: {manager.current_name.upper()} | {txt_switch}",
             10,
         )
         draw_overlay(

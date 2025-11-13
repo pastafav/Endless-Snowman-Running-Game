@@ -53,7 +53,7 @@ RELATIVE_SCROLL_MODE = True
 RELATIVE_EXTRA_SPEED_FACTOR = 1.0
 
 # Melt survival
-MELT_START_SECONDS = 3.0
+MELT_START_SECONDS = 2.0
 ICE_ADD_SECONDS    = 2.0
 
 # ── Moose animation assets (same behavior as Snowy) ──────────────────────────

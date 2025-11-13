@@ -55,6 +55,9 @@ IGLOO_PATH = Path("image/Igloo_2.png")
 IGLOO_SIZE = 90
 IGLOO_INTERVAL_RANGE = (7.0, 14.0)
 
+IGLOO_TRIGGER_TIME   = 50.0  # time until first igloo calm-zone starts
+IGLOO_GAP_BEFORE     = 2.0   # 2 seconds of no items before igloos spawn
+
 # ── Moose animation assets ────────────────────────────────────────────────────
 MOOSE_RUN_1      = Path("image/Moose_run_1.png")
 MOOSE_RUN_2      = Path("image/Moose_run_2.png")
@@ -64,8 +67,10 @@ MOOSE_SIZE       = 96
 MOOSE_FPS        = 8.0
 MOOSE_TURN_TIME  = 0.18
 
-# ── Split-head effect assets ──────────────────────────────────────────────────
+# ── Split-body assets (for carrot power) ─────────────────────────────────────
 HEAD_PATHS_TRY = [Path("image/split/Head_1.png"), Path("image/split/Head_1 (1).png")]
+UPPER_PATH     = Path("image/split/UpperBody_1.png")
+LOWER_PATH     = Path("image/split/LowerBody_1.png")
 HEAD_SIZE      = 56
 HEAD_BOB_PIX   = 12
 HEAD_FADE_OUT  = 0.35
@@ -81,6 +86,7 @@ class IglooItem(FallingSprite):
             relative_scroll_mode=True, relative_extra_factor=1.0,
         )
         self.radius = max(self.rect.width, self.rect.height) // 2 + 6
+        # game_cls will be attached later when spawning
 
 
 # ── Minigame #1: Tic-Tac-Toe (XO) ────────────────────────────────────────────
@@ -95,7 +101,8 @@ class _TicTacToe:
         self.result_text = "Click in the grid to place X"
 
     def handle_event(self, e):
-        if self.done: return
+        if self.done:
+            return
         if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1 and self.turn == 'X':
             mx, my = e.pos
             gx = (WIDTH - 3*self.cell)//2
@@ -110,7 +117,9 @@ class _TicTacToe:
 
     def draw(self, screen, font, bigfont):
         overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0,0,0,160)); screen.blit(overlay, (0,0))
+        overlay.fill((0,0,0,160))
+        screen.blit(overlay, (0,0))
+
         title = bigfont.render("IGLOO MINI-GAME: XO", True, (255, 255, 220))
         screen.blit(title, title.get_rect(center=(WIDTH//2, 80)))
 
@@ -137,14 +146,19 @@ class _TicTacToe:
 
     def _post_move(self):
         w = self._winner()
-        if w or self._full(): self._finish(w); return
-        self.turn = 'O'
-        empties = [(r,c) for r in range(3) for c in range(3) if self.grid[r][c] == '']
-        if empties:
-            r, c = random.choice(empties); self.grid[r][c] = 'O'
-        w = self._winner()
-        if w or self._full(): self._finish(w); return
-        self.turn = 'X'
+        if w or self._full():
+            self._finish(w)
+        else:
+            self.turn = 'O'
+            empties = [(r,c) for r in range(3) for c in range(3) if self.grid[r][c] == '']
+            if empties:
+                r, c = random.choice(empties)
+                self.grid[r][c] = 'O'
+            w = self._winner()
+            if w or self._full():
+                self._finish(w)
+            else:
+                self.turn = 'X'
 
     def _full(self):
         return all(self.grid[r][c] != '' for r in range(3) for c in range(3))
@@ -154,39 +168,39 @@ class _TicTacToe:
         lines = g + [[g[0][i], g[1][i], g[2][i]] for i in range(3)]
         lines += [[g[0][0], g[1][1], g[2][2]], [g[0][2], g[1][1], g[2][0]]]
         for line in lines:
-            if line[0] and line[0] == line[1] == line[2]: return line[0]
+            if line[0] and line[0] == line[1] == line[2]:
+                return line[0]
         return None
 
     def _finish(self, winner):
         self.done = True
         if winner == 'X':
-            self.win = True;  self.result_text = "You WIN! Reward: +10 Presents"
+            self.win = True
+            self.result_text = "You WIN! Reward: +10 Presents"
         elif winner == 'O':
-            self.win = False; self.result_text = "You LOSE! Consolation: +0 Presents"
+            self.win = False
+            self.result_text = "You LOSE! Consolation: +0 Presents"
         else:
-            self.win = False; self.result_text = "DRAW! Consolation: +0 Presents"
+            self.win = False
+            self.result_text = "DRAW! Consolation: +0 Presents"
 
 
-# ── Minigame #2: Memory Flip (replaces Reaction Tap) ─────────────────────────
+# ── Minigame #2: Memory Flip ─────────────────────────────────────────────────
 class _MemoryFlip:
     """
     Flip two cards to find a matching pair. Match all pairs before time runs out.
-    - Left-click to flip a card.
-    - If two flipped cards don't match, they auto-hide after a short delay.
     """
     def __init__(self):
         self.cols, self.rows = 3, 2               # 2×3 grid → 3 pairs
         pairs = list(range(1, (self.cols*self.rows)//2 + 1)) * 2
         random.shuffle(pairs)
 
-        # board rect
         self.card_w, self.card_h = 120, 140
         total_w = self.cols * self.card_w + (self.cols - 1) * 14
         total_h = self.rows * self.card_h + (self.rows - 1) * 14
         self.board_left = (WIDTH - total_w) // 2
         self.board_top  = 170
 
-        # build card state
         self.cards = []
         k = 0
         for r in range(self.rows):
@@ -201,9 +215,9 @@ class _MemoryFlip:
                 })
                 k += 1
 
-        self.first_idx = None     # index of first flipped card
-        self.lock_input = False   # true while showing mismatch
-        self.mismatch_timer = 0.0 # countdown before flipping back
+        self.first_idx = None
+        self.lock_input = False
+        self.mismatch_timer = 0.0
 
         self.time_limit = 25.0
         self.time_left = self.time_limit
@@ -212,40 +226,37 @@ class _MemoryFlip:
         self.result_text = "Flip cards and match all pairs!"
 
     def update(self, dt):
-        if self.done: return
+        if self.done:
+            return
 
-        # global timer
         self.time_left = max(0.0, self.time_left - dt)
         if self.time_left <= 0.0:
-            self._finish(False, "Time up! +0 Presents"); return
+            self._finish(False, "Time up! +0 Presents")
+            return
 
-        # mismatch countdown
         if self.lock_input:
             self.mismatch_timer -= dt
             if self.mismatch_timer <= 0:
                 self.lock_input = False
-                # hide the two mismatched cards
                 to_hide = [i for i, c in enumerate(self.cards) if c.get("_temp_reveal")]
                 for i in to_hide:
                     self.cards[i]["revealed"] = False
                     self.cards[i]["_temp_reveal"] = False
 
-        # check win
         if all(c["matched"] for c in self.cards):
             self._finish(True, "All matched! +10 Presents")
 
     def handle_event(self, e):
-        if self.done or self.lock_input: return
+        if self.done or self.lock_input:
+            return
         if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
             mx, my = e.pos
-            # click on a hidden, unmatched card
             for i, card in enumerate(self.cards):
                 if card["rect"].collidepoint(mx, my) and not card["matched"] and not card["revealed"]:
                     self._flip(i)
                     break
 
     def draw(self, screen, font, bigfont):
-        # overlay
         overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
         overlay.fill((0,0,0,160))
         screen.blit(overlay, (0,0))
@@ -253,12 +264,10 @@ class _MemoryFlip:
         title = bigfont.render("IGLOO MINI-GAME: MEMORY FLIP", True, (255, 255, 220))
         screen.blit(title, title.get_rect(center=(WIDTH//2, 100)))
 
-        # timer bar
         bar_w = int((self.time_left / self.time_limit) * 520)
         pygame.draw.rect(screen, (255,255,255), (WIDTH//2 - 260, 140, 520, 14), 2)
         pygame.draw.rect(screen, (190,240,210), (WIDTH//2 - 260, 140, bar_w, 14))
 
-        # draw cards
         for card in self.cards:
             r = card["rect"]
             if card["matched"]:
@@ -271,30 +280,24 @@ class _MemoryFlip:
                 v = bigfont.render(str(card["value"]), True, (40,50,120))
                 screen.blit(v, v.get_rect(center=r.center))
             else:
-                # face-down
                 pygame.draw.rect(screen, (60, 90, 130), r, border_radius=12)
                 pygame.draw.rect(screen, (255,255,255), r, 3, border_radius=12)
-                # simple snowflake symbol
                 cx, cy = r.center
                 pygame.draw.line(screen, (255,255,255), (cx-18, cy), (cx+18, cy), 3)
                 pygame.draw.line(screen, (255,255,255), (cx, cy-18), (cx, cy+18), 3)
                 pygame.draw.line(screen, (255,255,255), (cx-13, cy-13), (cx+13, cy+13), 3)
                 pygame.draw.line(screen, (255,255,255), (cx-13, cy+13), (cx+13, cy-13), 3)
 
-        # status text
         tip = font.render(self.result_text + ("  (Click to close)" if self.done else ""), True, (255,255,255))
         screen.blit(tip, tip.get_rect(center=(WIDTH//2, HEIGHT-70)))
 
-    # --- internals ---
     def _flip(self, idx):
         card = self.cards[idx]
         card["revealed"] = True
-        # If no first card yet
         if self.first_idx is None:
             self.first_idx = idx
             return
 
-        # Second card flipped
         a = self.cards[self.first_idx]
         b = card
         if a["value"] == b["value"]:
@@ -324,9 +327,13 @@ class _QuickMath:
         a = random.randint(4, 19)
         b = random.randint(3, 17)
         if random.random() < 0.5 and a > b:
-            self.op = '-'; self.a, self.b = a, b; self.ans = a - b
+            self.op = '-'
+            self.a, self.b = a, b
+            self.ans = a - b
         else:
-            self.op = '+'; self.a, self.b = a, b; self.ans = a + b
+            self.op = '+'
+            self.a, self.b = a, b
+            self.ans = a + b
 
         self.buf = ""
         self.time_limit = 7.0
@@ -336,21 +343,25 @@ class _QuickMath:
         self.result_text = "Type your answer and press Enter"
 
     def update(self, dt):
-        if self.done: return
+        if self.done:
+            return
         self.time_left = max(0.0, self.time_left - dt)
         if self.time_left <= 0.0:
             self._finish(False, f"Time up! Answer: {self.ans}")
 
     def handle_event(self, e):
-        if self.done: return
+        if self.done:
+            return
         if e.type == pygame.KEYDOWN:
             if e.key == pygame.K_RETURN:
                 try:
                     ok = (int(self.buf) == self.ans)
                 except Exception:
                     ok = False
-                if ok: self._finish(True, "Correct! +10 Presents")
-                else:  self._finish(False, f"Wrong! Answer: {self.ans}")
+                if ok:
+                    self._finish(True, "Correct! +10 Presents")
+                else:
+                    self._finish(False, f"Wrong! Answer: {self.ans}")
             elif e.key == pygame.K_BACKSPACE:
                 self.buf = self.buf[:-1]
             else:
@@ -361,7 +372,9 @@ class _QuickMath:
 
     def draw(self, screen, font, bigfont):
         overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0,0,0,160)); screen.blit(overlay, (0,0))
+        overlay.fill((0,0,0,160))
+        screen.blit(overlay, (0,0))
+
         title = bigfont.render("IGLOO MINI-GAME: QUICK MATH", True, (255, 255, 220))
         screen.blit(title, title.get_rect(center=(WIDTH//2, 80)))
 
@@ -371,7 +384,6 @@ class _QuickMath:
         ans = bigfont.render(self.buf if self.buf else "_", True, (200,255,220))
         screen.blit(ans, ans.get_rect(center=(WIDTH//2, HEIGHT//2 + 60)))
 
-        # timer bar
         bar_w = int((self.time_left / self.time_limit) * 500)
         pygame.draw.rect(screen, (255,255,255), (WIDTH//2 - 250, HEIGHT - 130, 500, 16), 2)
         pygame.draw.rect(screen, (180,240,200), (WIDTH//2 - 250, HEIGHT - 130, bar_w, 16))
@@ -418,9 +430,11 @@ class SnowyScene:
             if PLAYABLE_CENTER_LANES != 3:
                 return self.lane_centers[idx]
             mid_x = self.lane_centers[1]
-            if idx == 1: return mid_x
+            if idx == 1:
+                return mid_x
             edge_x = self.lane_centers[idx]
             return int(mid_x + (edge_x - mid_x) * HORIZONTAL_SPREAD)
+
         self.adjusted_lane_x = adjusted_lane_x
 
         # groups
@@ -428,9 +442,8 @@ class SnowyScene:
         self.fx_sprites  = pygame.sprite.Group()
         self.igloos      = pygame.sprite.Group()
 
-        # player
+        # player (NOT in all_sprites – drawn manually so we can hide him)
         self.player = _Player(self.adjusted_lane_x, start_lane=1)
-        self.all_sprites.add(self.player)
 
         # spawner
         self.spawner = Spawner(
@@ -462,8 +475,10 @@ class SnowyScene:
 
         # ── Sound init ───────────────────────────────────────────────────────
         if pygame.mixer.get_init() is None:
-            try: pygame.mixer.init()
-            except Exception as e: print(f"[Sound] Mixer init failed: {e}")
+            try:
+                pygame.mixer.init()
+            except Exception as e:
+                print(f"[Sound] Mixer init failed: {e}")
         try:
             pygame.mixer.music.load("sound/snowy_bm.mp3")
             pygame.mixer.music.set_volume(0.55)
@@ -474,9 +489,13 @@ class SnowyScene:
         self.sounds = {}
         def _safe_sound(name, path, vol=1.0):
             try:
-                s = pygame.mixer.Sound(path); s.set_volume(vol); self.sounds[name] = s
+                s = pygame.mixer.Sound(path)
+                s.set_volume(vol)
+                self.sounds[name] = s
             except Exception as e:
-                print(f"[Sound] Failed to load {path}: {e}"); self.sounds[name] = None
+                print(f"[Sound] Failed to load {path}: {e}")
+                self.sounds[name] = None
+
         _safe_sound("present", "sound/present_collected.wav", 0.9)
         _safe_sound("special", "sound/item_collected.wav",    0.9)
         _safe_sound("hit",     "sound/obstacles_hit.wav",     0.9)
@@ -485,12 +504,14 @@ class SnowyScene:
         # moose frames
         self.player.load_moose_frames(
             run_paths=[MOOSE_RUN_1, MOOSE_RUN_2],
-            left_path=MOOSE_TURN_LEFT, right_path=MOOSE_TURN_RIGHT, size=MOOSE_SIZE
+            left_path=MOOSE_TURN_LEFT,
+            right_path=MOOSE_TURN_RIGHT,
+            size=MOOSE_SIZE
         )
 
-        # split-head preload
-        self.head_image = self._load_first_ok(HEAD_PATHS_TRY, HEAD_SIZE)
-        self.carrot_heads: list[_LaneHead] = []
+        # split-body preload (head / upper / lower)
+        self.split_images = self._load_split_images(HEAD_SIZE)
+        self.carrot_parts: list[_SplitPart] = []
 
         # scene state
         self.state = {
@@ -505,42 +526,66 @@ class SnowyScene:
         self.game_over = False
         self._played_game_over_snd = False
 
-        # minigames (random pick on igloo)
+        # minigames (each igloo lane → its own game)
         self.in_minigame = False
         self.mini = None
         self.mini_kinds = [_TicTacToe, _MemoryFlip, _QuickMath]
-        self.next_igloo_t = random.uniform(*IGLOO_INTERVAL_RANGE)
+
+        # Igloo timing:
+        self.next_igloo_t = IGLOO_TRIGGER_TIME   # countdown until calm-zone start
+        self.pre_igloo_gap = 0.0                # 2s window with no items
+
+        # carrot effect flags
+        self.player_hidden   = False   # hide main snowman while split
+        self.post_carrot_gap = 0.0     # 1 second of no spawns after effect
 
     def reset(self):
-        try: pygame.mixer.music.stop()
-        except Exception: pass
+        try:
+            pygame.mixer.music.stop()
+        except Exception:
+            pass
 
         if hasattr(self, "spawner"):
             for g in (self.spawner.obstacles, self.spawner.collectibles, self.spawner.special_items):
-                for s in list(g): s.kill()
+                for s in list(g):
+                    s.kill()
 
-        for s in list(self.igloos): s.kill()
-        for s in list(self.fx_sprites): s.kill()
-        self.igloos.empty(); self.fx_sprites.empty(); self.carrot_heads.clear()
+        for s in list(self.igloos):
+            s.kill()
+        for s in list(self.fx_sprites):
+            s.kill()
+        self.igloos.empty()
+        self.fx_sprites.empty()
+        self.carrot_parts.clear()
 
-        self.bg_offset = 0.0; self.elapsed = 0.0
+        self.bg_offset = 0.0
+        self.elapsed = 0.0
         self.state.update({
             "slow_timer": 0.0, "hit_flash": 0.0, "pickup_flash": 0.0,
             "phase_kind": None, "phase_timer": 0.0, "phase_start_flash": 0.0,
             "frame_collected_presents": 0, "frame_collected_specials": [], "active_buff": None,
         })
-        self.show_start = False; self.paused = False; self.game_over = False
+        self.show_start = False
+        self.paused = False
+        self.game_over = False
         self._played_game_over_snd = False
         self.player.set_mode("normal")
 
-        self.in_minigame = False; self.mini = None
-        self.next_igloo_t = random.uniform(*IGLOO_INTERVAL_RANGE)
+        self.in_minigame = False
+        self.mini = None
+
+        self.next_igloo_t = IGLOO_TRIGGER_TIME
+        self.pre_igloo_gap = 0.0
+
+        self.player_hidden   = False
+        self.post_carrot_gap = 0.0
 
         try:
             pygame.mixer.music.load("sound/snowy_bm.mp3")
             pygame.mixer.music.set_volume(0.55)
             pygame.mixer.music.play(-1)
-        except Exception: pass
+        except Exception:
+            pass
 
     # ---------- input/update/draw ----------
     def handle_event(self, ev: pygame.event.Event):
@@ -550,16 +595,22 @@ class SnowyScene:
                 self.mini.handle_event(ev)
             # close overlay on click after done; apply reward
             if ev.type == pygame.MOUSEBUTTONDOWN and self.mini.done:
-                if getattr(self.mini, "win", False):
+                did_win = getattr(self.mini, "win", False)
+                if did_win:
                     self.shared["presents"] += 10
+                    # request scene change to HELL after finishing igloo minigame
+                    self.shared["_next_scene"] = "hell"
                 self.in_minigame = False
                 self.mini = None
             return
 
         if ev.type == pygame.KEYDOWN and not (self.paused or self.game_over):
-            if ev.key in (pygame.K_LEFT, pygame.K_a):   self.player.move_left()
-            elif ev.key in (pygame.K_RIGHT, pygame.K_d): self.player.move_right()
-            elif ev.key == pygame.K_p:                  self.paused = not self.paused
+            if ev.key in (pygame.K_LEFT, pygame.K_a):
+                self.player.move_left()
+            elif ev.key in (pygame.K_RIGHT, pygame.K_d):
+                self.player.move_right()
+            elif ev.key == pygame.K_p:
+                self.paused = not self.paused
 
     def update(self, dt: float):
         if self.paused or self.game_over:
@@ -578,9 +629,12 @@ class SnowyScene:
                 if k == "phase_timer" and self.state["phase_timer"] == 0.0:
                     if self.state.get("phase_kind") == "moose":
                         self.player.set_mode("normal")
-                    if self.state.get("phase_kind") == "carrot" and self.carrot_heads:
-                        for h in self.carrot_heads: h.begin_fade_out()
-                        self.carrot_heads.clear()
+                    if self.state.get("phase_kind") == "carrot" and self.carrot_parts:
+                        for h in self.carrot_parts:
+                            h.begin_fade_out()
+                        self.carrot_parts.clear()
+                        self.player_hidden   = False
+                        self.post_carrot_gap = 2.0   # 1 second no items after split ends
                     self.state["phase_kind"] = None
                     self.state["active_buff"] = None
 
@@ -589,26 +643,61 @@ class SnowyScene:
         portion = min(1.0, self.elapsed / max(0.001, TIME_TO_MAX))
         base_speed = BG_SCROLL_SPEED_BASE + (BG_SCROLL_SPEED_MAX - BG_SCROLL_SPEED_BASE) * (portion ** SPEED_CURVE)
         speed_mult = 0.6 if self.state["slow_timer"] > 0.0 else 1.0
-        if self.state["phase_timer"] > 0.0: speed_mult *= 1.9
+        if self.state["phase_timer"] > 0.0:
+            speed_mult *= 1.9
         current_speed = base_speed * speed_mult
         self.bg_offset -= current_speed * dt
 
-        # spawn/update
-        self.spawner.update(dt, current_speed)
+        # ---------- Igloo timing + gap logic ----------
+        # Only care if no igloos on-screen and not inside minigame
+        if len(self.igloos) == 0 and not self.in_minigame:
+            if self.next_igloo_t > 0.0:
+                self.next_igloo_t -= dt
+                if self.next_igloo_t <= 0.0:
+                    # start 2-second calm zone: clear existing items
+                    self.pre_igloo_gap = IGLOO_GAP_BEFORE
+                    for g in (self.spawner.obstacles, self.spawner.collectibles, self.spawner.special_items):
+                        for s in list(g):
+                            s.kill()
+            elif self.pre_igloo_gap > 0.0:
+                self.pre_igloo_gap -= dt
+                if self.pre_igloo_gap <= 0.0:
+                    # gap finished → spawn 3 igloos (one per lane) each with its own game
+                    game_order = list(self.mini_kinds)
+                    random.shuffle(game_order)
+                    for lane_idx, Mini in enumerate(game_order):
+                        ig = IglooItem(
+                            lane_idx,
+                            self.adjusted_lane_x,
+                            PRESENT_SPEED * (1.0 + 0.3 * portion)
+                        )
+                        ig.game_cls = Mini
+                        self.igloos.add(ig)
+                        self.all_sprites.add(ig)
 
-        # igloo spawns
-        self.next_igloo_t -= dt
-        if self.next_igloo_t <= 0.0:
-            lane = random.choice((0, 1, 2))
-            ig = IglooItem(lane, self.adjusted_lane_x, PRESENT_SPEED * (1.0 + 0.3 * portion))
-            self.igloos.add(ig); self.all_sprites.add(ig)
-            self.next_igloo_t = self._next_igloo_delay(current_speed)
+                    self.next_igloo_t = self._next_igloo_delay(current_speed)
+                    self.pre_igloo_gap = 0.0
+
+        # post-carrot spawn gap timer
+        if self.post_carrot_gap > 0.0:
+            self.post_carrot_gap = max(0.0, self.post_carrot_gap - dt)
+
+        # spawn/update: no spawns during igloo calm zone, while igloos are present,
+        # or during post-carrot 1s gap
+        if self.pre_igloo_gap <= 0.0 and len(self.igloos) == 0 and self.post_carrot_gap <= 0.0:
+            self.spawner.update(dt, current_speed)
 
         # sprites
         for spr in list(self.all_sprites):
-            if isinstance(spr, FallingSprite): spr.update(dt, current_speed)
-            else: spr.update(dt)
-        for fx in list(self.fx_sprites): fx.update(dt)
+            if isinstance(spr, FallingSprite):
+                spr.update(dt, current_speed)
+            else:
+                spr.update(dt)
+        for fx in list(self.fx_sprites):
+            fx.update(dt)
+
+        # player updated separately (so we can hide him visually)
+        self.player.update(dt)
 
         # collisions (skip when phased)
         if self.state["phase_timer"] <= 0.0:
@@ -619,7 +708,8 @@ class SnowyScene:
             if picked > 0:
                 self.shared["presents"] += picked
                 self.state["pickup_flash"] = max(self.state["pickup_flash"], 0.12)
-                if self.sounds.get("present"): self.sounds["present"].play()
+                if self.sounds.get("present"):
+                    self.sounds["present"].play()
 
             # specials
             specials = [n.lower() for n in self.state.get("frame_collected_specials", [])]
@@ -628,13 +718,15 @@ class SnowyScene:
                     self.state["phase_kind"] = "carrot"
                     self.state["phase_timer"] = 2.0
                     self.state["phase_start_flash"] = 0.25
-                    self._spawn_heads_on_lanes()
+                    self.player_hidden = True   # hide main character
+                    self._spawn_split_parts()
                 if any(("moose" in n) for n in specials):
                     self.state["phase_kind"] = "moose"
                     self.state["phase_timer"] = 2.0
                     self.state["phase_start_flash"] = 0.25
                     self.player.set_mode("moose")
-                if self.sounds.get("special"): self.sounds["special"].play()
+                if self.sounds.get("special"):
+                    self.sounds["special"].play()
 
             # obstacle hits
             collide_fn = pygame.sprite.collide_circle_ratio(1.05)
@@ -644,26 +736,32 @@ class SnowyScene:
                     self.state["slow_timer"]  = max(self.state["slow_timer"], 1.0)
                     self.state["hit_flash"]   = max(self.state["hit_flash"], 0.25)
                     ob.kill()
-                    if self.sounds.get("hit"): self.sounds["hit"].play()
+                    if self.sounds.get("hit"):
+                        self.sounds["hit"].play()
 
-            # igloo pickup → RANDOM minigame
+            # igloo pickup → open that igloo's specific minigame
             touched_igloo = pygame.sprite.spritecollide(
                 self.player, self.igloos, dokill=True,
                 collided=pygame.sprite.collide_circle_ratio(1.15)
             )
             if touched_igloo:
-                Mini = random.choice(self.mini_kinds)
+                ig = touched_igloo[0]
+                Mini = getattr(ig, "game_cls", random.choice(self.mini_kinds))
                 self.mini = Mini()
                 self.in_minigame = True
 
-        if self.shared["hearts"] <= 0: self.game_over = True
+        if self.shared["hearts"] <= 0:
+            self.game_over = True
         self._current_speed_dbg = current_speed
 
     def draw(self, screen: pygame.Surface):
         self._draw_bg(screen)
         self.all_sprites.draw(screen)
         self.fx_sprites.draw(screen)
-        screen.blit(self.player.image, self.player.rect)
+
+        # draw main player only if not hidden by carrot effect
+        if not self.player_hidden:
+            screen.blit(self.player.image, self.player.rect)
 
         y = 8
         screen.blit(self.font.render("SNOWY", True, (30, 30, 30)), (10, y)); y += 22
@@ -673,11 +771,16 @@ class SnowyScene:
 
         if self.game_over:
             if not self._played_game_over_snd:
-                try: pygame.mixer.music.fadeout(400)
-                except Exception: pass
-                if self.sounds.get("fail"): self.sounds["fail"].play()
+                try:
+                    pygame.mixer.music.fadeout(400)
+                except Exception:
+                    pass
+                if self.sounds.get("fail"):
+                    self.sounds["fail"].play()
                 self._played_game_over_snd = True
-            ov = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA); ov.fill((0,0,0,150)); screen.blit(ov, (0,0))
+            ov = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+            ov.fill((0,0,0,150))
+            screen.blit(ov, (0,0))
             t = self.bigfont.render("GAME OVER", True, (255, 220, 220))
             screen.blit(t, t.get_rect(center=(WIDTH//2, HEIGHT//2)))
 
@@ -687,8 +790,10 @@ class SnowyScene:
 
     # ---------- helpers ----------
     def _load_bg(self, path: Path) -> pygame.Surface | None:
-        try: img = pygame.image.load(str(path)).convert_alpha()
-        except Exception: return None
+        try:
+            img = pygame.image.load(str(path)).convert_alpha()
+        except Exception:
+            return None
         iw, ih = img.get_size()
         scale = WIDTH / iw
         return pygame.transform.smoothscale(img, (WIDTH, max(HEIGHT, int(ih * scale))))
@@ -700,37 +805,80 @@ class SnowyScene:
                 return pygame.transform.smoothscale(img, (size, size))
             except Exception:
                 continue
-        print("[Split] Head image not found; effect disabled.")
         return None
+
+    def _load_split_images(self, size: int):
+        imgs = []
+        head_img = self._load_first_ok(HEAD_PATHS_TRY, size)
+        if head_img:
+            imgs.append(head_img)
+        else:
+            print("[Split] Head image not found; split effect disabled.")
+            return []
+
+        try:
+            upper_img = pygame.image.load(str(UPPER_PATH)).convert_alpha()
+            upper_img = pygame.transform.smoothscale(upper_img, (size, size))
+        except Exception:
+            upper_img = None
+            print("[Split] Upper body image not found.")
+        try:
+            lower_img = pygame.image.load(str(LOWER_PATH)).convert_alpha()
+            lower_img = pygame.transform.smoothscale(lower_img, (size, size))
+        except Exception:
+            lower_img = None
+            print("[Split] Lower body image not found.")
+
+        if upper_img:
+            imgs.append(upper_img)
+        if lower_img:
+            imgs.append(lower_img)
+        return imgs
 
     def _draw_bg(self, surf: pygame.Surface):
         img = self.bg_img
         h = img.get_height()
         y = -int(self.bg_offset % h)
-        surf.blit(img, (0, y)); surf.blit(img, (0, y + h))
-        if y + h < HEIGHT: surf.blit(img, (0, y + h * 2))
+        surf.blit(img, (0, y))
+        surf.blit(img, (0, y + h))
+        if y + h < HEIGHT:
+            surf.blit(img, (0, y + h * 2))
 
-    def _spawn_heads_on_lanes(self):
-        if self.head_image is None: return
-        if self.carrot_heads:
-            for h in self.carrot_heads: h.refresh_for_phase()
+    def _spawn_split_parts(self):
+        if not self.split_images:
             return
+        # clear previous parts if any
+        if self.carrot_parts:
+            for h in self.carrot_parts:
+                h.kill()
+            self.carrot_parts.clear()
+
+        # one part per lane: Head, Upper, Lower (or however many we loaded)
         y = PLAYER_Y - 110
-        self.carrot_heads = []
-        for cx in self.lane_centers:
-            spr = _LaneHead(self, self.head_image, (int(cx), y))
+        self.carrot_parts = []
+        for lane_idx, img in enumerate(self.split_images):
+            if lane_idx >= len(self.lane_centers):
+                break
+            cx = int(self.lane_centers[lane_idx])
+            spr = _SplitPart(self, img, (cx, y))
             self.fx_sprites.add(spr)
-            self.carrot_heads.append(spr)
+            self.carrot_parts.append(spr)
 
     def _next_igloo_delay(self, cur_speed: float) -> float:
-        portion = min(1.0, max(0.0, (cur_speed - BG_SCROLL_SPEED_BASE) /
-                               max(1.0, (BG_SCROLL_SPEED_MAX - BG_SCROLL_SPEED_BASE))))
+        portion = min(
+            1.0,
+            max(
+                0.0,
+                (cur_speed - BG_SCROLL_SPEED_BASE) /
+                max(1.0, (BG_SCROLL_SPEED_MAX - BG_SCROLL_SPEED_BASE))
+            )
+        )
         lo, hi = IGLOO_INTERVAL_RANGE
         k = 1.0 - 0.35 * portion
         return random.uniform(lo * k, hi * k)
 
 
-class _LaneHead(pygame.sprite.Sprite):
+class _SplitPart(pygame.sprite.Sprite):
     def __init__(self, scene: SnowyScene, img: pygame.Surface, center: tuple[int, int]):
         super().__init__()
         self.scene = scene
@@ -761,16 +909,20 @@ class _LaneHead(pygame.sprite.Sprite):
         if self.manual_fade:
             self.fade_elapsed += dt
             if self.fade_elapsed >= HEAD_FADE_OUT:
-                self.kill(); return
+                self.kill()
+                return
             alpha = max(0, int(255 * (1.0 - self.fade_elapsed / HEAD_FADE_OUT)))
         else:
             if self.scene.state.get("phase_kind") == "carrot":
                 rem = max(0.0, float(self.scene.state.get("phase_timer", 0.0)))
-                if rem <= 0.0: self.begin_fade_out(); return
+                if rem <= 0.0:
+                    self.begin_fade_out()
+                    return
                 if HEAD_FADE_OUT > 0.0 and rem < HEAD_FADE_OUT:
                     alpha = max(0, int(255 * (rem / HEAD_FADE_OUT)))
             else:
-                self.begin_fade_out(); return
+                self.begin_fade_out()
+                return
 
         self.image = self.base_image.copy()
         self.image.fill((255,255,255,alpha), special_flags=pygame.BLEND_RGBA_MULT)
@@ -811,14 +963,19 @@ class _Player(pygame.sprite.Sprite):
         self.moose_frame_right = _ld(right_path)
 
     def set_mode(self, mode: str):
-        if mode == self.mode: return
+        if mode == self.mode:
+            return
         self.mode = mode
-        self.anim_idx = 0; self.anim_timer = 0.0; self.turn_timer = 0.0
+        self.anim_idx = 0
+        self.anim_timer = 0.0
+        self.turn_timer = 0.0
         if self.mode == "normal":
-            self.image = self.normal_image.copy(); self._reset_rect_center()
+            self.image = self.normal_image.copy()
+            self._reset_rect_center()
         elif self.mode == "moose":
             if len(self.moose_frames_run) < 2 or self.moose_frame_left is None or self.moose_frame_right is None:
-                self.mode = "normal"; self.image = self.normal_image.copy()
+                self.mode = "normal"
+                self.image = self.normal_image.copy()
             else:
                 self.image = self.moose_frames_run[0]
             self._reset_rect_center()
@@ -843,13 +1000,17 @@ class _Player(pygame.sprite.Sprite):
         self.lane = max(0, self.lane - 1)
         self.target_x = self._adjusted_lane_x(self.lane)
         if self.mode == "moose" and self.moose_frame_left is not None:
-            self.image = self.moose_frame_left; self.turn_dir = "left"; self.turn_timer = MOOSE_TURN_TIME
+            self.image = self.moose_frame_left
+            self.turn_dir = "left"
+            self.turn_timer = MOOSE_TURN_TIME
 
     def move_right(self):
         self.lane = min(PLAYABLE_CENTER_LANES - 1, self.lane + 1)
         self.target_x = self._adjusted_lane_x(self.lane)
         if self.mode == "moose" and self.moose_frame_right is not None:
-            self.image = self.moose_frame_right; self.turn_dir = "right"; self.turn_timer = MOOSE_TURN_TIME
+            self.image = self.moose_frame_right
+            self.turn_dir = "right"
+            self.turn_timer = MOOSE_TURN_TIME
 
     def _reset_rect_center(self):
         c = self.rect.center
