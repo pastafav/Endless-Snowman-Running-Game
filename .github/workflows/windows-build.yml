@@ -50,10 +50,8 @@ jobs:
           New-Item -ItemType Directory -Force -Path dist\SnowSurvivor-win | Out-Null
           if (Test-Path dist\SnowSurvivor.exe) { Copy-Item dist\SnowSurvivor.exe dist\SnowSurvivor-win }
           if (Test-Path dist\SnowSurvivor) { Copy-Item -Recurse -Force dist\SnowSurvivor dist\SnowSurvivor-win\SnowSurvivor }
-          Set-Content -Path dist\SnowSurvivor-win\README.txt -Value @'
-Double-click SnowSurvivor.exe to play.
-If SmartScreen warns, click More info → Run anyway.
-'@
+          "Double-click SnowSurvivor.exe to play." | Out-File -Encoding UTF8 dist\SnowSurvivor-win\README.txt
+          "If SmartScreen warns, click More info -> Run anyway." | Out-File -Append -Encoding UTF8 dist\SnowSurvivor-win\README.txt
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
