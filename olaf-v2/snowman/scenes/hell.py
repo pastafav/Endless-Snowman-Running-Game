@@ -277,8 +277,16 @@ class HellScene:
 
         # melt drain
         self.state["melt"] = max(0.0, self.state["melt"] - dt)
+
+        # ส่งเวลา Melt ที่เหลือไปให้ HUD ใช้วาด survival bar
+        if hasattr(self, "shared"):
+            self.shared["hell_melt_left"]  = float(self.state["melt"])
+            self.shared["hell_melt_total"] = float(MELT_START_SECONDS) 
+            
         if self.state["melt"] <= 0.0:
             self.game_over = True
+
+        
 
         # speed model
         self.elapsed += dt
@@ -360,8 +368,8 @@ class HellScene:
         # HUD
         y = 8
         screen.blit(self.font.render("HELL", True, (240, 220, 220)), (10, y)); y += 22
-        screen.blit(self.font.render(f"Hearts: {self.shared['hearts']}", True, (255,120,120)), (10, y)); y += 22
-        screen.blit(self.font.render(f"Ice: {self.shared['ice']}", True, (180,230,255)), (10, y)); y += 22
+        #screen.blit(self.font.render(f"Hearts: {self.shared['hearts']}", True, (255,120,120)), (10, y)); y += 22
+        #screen.blit(self.font.render(f"Ice: {self.shared['ice']}", True, (180,230,255)), (10, y)); y += 22
         screen.blit(self.font.render(f"Melt: {self.state['melt']:.1f}s", True, (255,200,120)), (10, y)); y += 22
         screen.blit(self.font.render(f"Speed: {int(getattr(self, '_current_speed_dbg', 0))} px/s", True, (240,220,220)), (10, y))
 

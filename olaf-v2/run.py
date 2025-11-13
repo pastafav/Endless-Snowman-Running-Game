@@ -363,20 +363,14 @@ def main():
             # HUD มุมซ้ายบน
             scene_name = manager.current_name.upper() if manager.current_name else "NONE"
 
-            if manager.current_name == "hell":
-                txt_switch = f"Auto switch to SNOWY in {max(0.0, SWITCH_INTERVAL - elapsed_since_switch):.1f}s"
-            else:
-                txt_switch = "Auto switch: only active in HELL"
-
-            # บรรทัดบนสุด: Scene + auto-switch
-            draw_overlay(
-                screen,
-                f"Scene: {scene_name} | {txt_switch}",
-                10,
-            )
 
             # แถวที่ 2: Hearts + Presents
-            y = 34
+            # --- HUD icon position depends on scene ---
+            if manager.current_name == "hell":
+                y = 80     # HELL → เลื่อนลงมามากขึ้น
+            else:
+                y = 50     # SNOWY → อยู่ตำแหน่งเดิม
+                    
             spacing = 40
 
             # Hearts 3 ดวง
@@ -397,13 +391,20 @@ def main():
             # Survival bar (เฉพาะใน HELL)
             if manager.current_name == "hell":
                 bar_w, bar_h = 260, 20
-
-                # กึ่งกลางบนของหน้าจอ
                 bar_x = (WIDTH // 2) - (bar_w // 2)
-                bar_y = 10  # อยากขยับลงกว่านี้ก็แก้เป็น 20/30 ได้
+                bar_y = 10
 
-                # 1.0 = เต็ม, 0.0 = หมดเวลา
-                ratio = (SWITCH_INTERVAL - elapsed_since_switch) / SWITCH_INTERVAL
+                # ดึงเวลา Melt จาก HellScene (ถ้ามี)
+                melt_left  = manager.shared.get("hell_melt_left")
+                melt_total = manager.shared.get("hell_melt_total", SWITCH_INTERVAL)
+
+                if melt_left is not None and melt_total > 0:
+                    # ใช้อัตราส่วนเดียวกับที่แสดง Melt: X.Xs
+                    ratio = melt_left / melt_total
+                else:
+                    # fallback กรณียังไม่ได้ส่งค่า shared
+                    ratio = (SWITCH_INTERVAL - elapsed_since_switch) / SWITCH_INTERVAL
+
                 ratio = max(0.0, min(1.0, ratio))
 
                 # พื้นหลัง + กรอบ
@@ -437,9 +438,8 @@ def main():
 
 
 
-            # แถวที่ 3: controls hint
-            draw_overlay(screen, "Esc=Quit | 1/F1=Snowy | 2/F2=Hell | P=Pause", 58)
 
+            
             # Pause overlay
             if show_pause_menu:
                 pause_scene.draw(screen)

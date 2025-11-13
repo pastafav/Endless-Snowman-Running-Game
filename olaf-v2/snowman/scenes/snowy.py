@@ -765,8 +765,8 @@ class SnowyScene:
 
         y = 8
         screen.blit(self.font.render("SNOWY", True, (30, 30, 30)), (10, y)); y += 22
-        screen.blit(self.font.render(f"Hearts: {self.shared['hearts']}", True, (220,70,70)), (10, y)); y += 22
-        screen.blit(self.font.render(f"Presents: {self.shared['presents']}", True, (60,120,200)), (10, y)); y += 22
+        #screen.blit(self.font.render(f"Hearts: {self.shared['hearts']}", True, (220,70,70)), (10, y)); y += 22
+        #screen.blit(self.font.render(f"Presents: {self.shared['presents']}", True, (60,120,200)), (10, y)); y += 22
         screen.blit(self.font.render(f"Speed: {int(getattr(self, '_current_speed_dbg', 0))} px/s", True, (40,40,40)), (10, y))
 
         if self.game_over:

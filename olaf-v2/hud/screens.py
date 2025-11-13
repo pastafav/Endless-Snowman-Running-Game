@@ -1,4 +1,3 @@
-# person3_ui/screens.py
 import os
 import pygame as pg
 
@@ -32,7 +31,7 @@ class TitleScene:
 
         # ปุ่มต่าง ๆ (กำหนดตำแหน่งตอน draw)
         self.button_start = pg.Rect(0, 0, 180, 56)
-        self.button_howto = pg.Rect(0, 0,  300, 56)
+        self.button_howto = pg.Rect(0, 0, 300, 56)
 
     def _ensure_bg_scaled(self, surf):
         """ถ้า BG ยังไม่ scale ให้ตรงกับขนาดหน้าต่าง ก็ scale ใหม่"""
@@ -71,18 +70,41 @@ class TitleScene:
         surf.blit(title_shadow, (pos.x + 3, pos.y + 3))
         surf.blit(title_text, pos)
 
+        # เอาตำแหน่งเมาส์มาใช้เช็ค hover
+        mx, my = pg.mouse.get_pos()
+
         # ปุ่ม START
         self.button_start.center = (w // 2, h // 2 + 20)
-        pg.draw.rect(surf, (120, 160, 255), self.button_start, border_radius=18)
-        pg.draw.rect(surf, (60, 100, 200),  self.button_start, width=3, border_radius=18)
+        hovered_start = self.button_start.collidepoint(mx, my)
+
+        if hovered_start:
+            start_fill   = (140, 180, 255)  # สว่างขึ้น
+            start_border = (40, 80, 180)
+        else:
+            start_fill   = (120, 160, 255)
+            start_border = (60, 100, 200)
+
+        pg.draw.rect(surf, start_fill, self.button_start, border_radius=18)
+        pg.draw.rect(surf, start_border, self.button_start, width=3, border_radius=18)
         btn_text = self.font.render("START", True, (255, 255, 255))
         surf.blit(btn_text, btn_text.get_rect(center=self.button_start.center))
 
         # ปุ่ม HOW TO PLAY (อยู่ใต้ START)
         self.button_howto.center = (w // 2, h // 2 + 90)
-        pg.draw.rect(surf, (255, 255, 255, 220), self.button_howto, border_radius=14)
-        pg.draw.rect(surf, (60, 100, 200),      self.button_howto, width=2, border_radius=14)
-        howto_text = self.font.render("HOW TO PLAY", True, (60, 100, 200))
+        hovered_howto = self.button_howto.collidepoint(mx, my)
+
+        if hovered_howto:
+            howto_fill   = (235, 245, 255)   # ขาวอมฟ้า สว่าง
+            howto_border = (40, 80, 180)
+            howto_text_color = (40, 80, 180)
+        else:
+            howto_fill   = (255, 255, 255)   # ขาวปกติ
+            howto_border = (60, 100, 200)
+            howto_text_color = (60, 100, 200)
+
+        pg.draw.rect(surf, howto_fill, self.button_howto, border_radius=14)
+        pg.draw.rect(surf, howto_border, self.button_howto, width=2, border_radius=14)
+        howto_text = self.font.render("HOW TO PLAY", True, howto_text_color)
         surf.blit(howto_text, howto_text.get_rect(center=self.button_howto.center))
 
 
@@ -110,6 +132,29 @@ class HowToScene:
             "Enter igloos to go to special maps.",
             "In Hell mode, survive before the snowman melted",
         ]
+
+        # โหลด icon สำหรับใช้ในข้อความ (โหลดครั้งเดียว)
+        self.tree_img = None
+        self.ice_img = None
+        self.igloo_img = None
+
+        try:
+            img = pg.image.load(os.path.join("image", "Tree_1.png")).convert_alpha()
+            self.tree_img = pg.transform.scale(img, (32, 32))
+        except Exception as e:
+            print("[HowTo] Cannot load TreeOnFire_2.png:", e)
+
+        try:
+            img = pg.image.load(os.path.join("image", "Present_1.png")).convert_alpha()
+            self.ice_img = pg.transform.scale(img, (28, 28))
+        except Exception as e:
+            print("[HowTo] Cannot load Icecube_1.png:", e)
+
+        try:
+            img = pg.image.load(os.path.join("image", "Igloo_2.png")).convert_alpha()
+            self.igloo_img = pg.transform.scale(img, (32, 32))
+        except Exception as e:
+            print("[HowTo] Cannot load Igloo_2.png:", e)
 
     def _ensure_bg_scaled(self, surf):
         if not self.bg_original:
@@ -160,17 +205,80 @@ class HowToScene:
         tpos = title.get_rect(center=(panel_rect.centerx, panel_rect.y + 40))
         surf.blit(title, tpos)
 
-        # แสดงข้อความทีละบรรทัด
+        # ------- แสดงข้อความทีละบรรทัด พร้อม icon แทรกกลางประโยค -------
         y = tpos.bottom + 20
-        for line in self.lines:
+
+        for i, line in enumerate(self.lines):
+
+            # บรรทัด 3 — Avoid [tree] and obstacles.
+            if i == 2 and self.tree_img is not None:
+                left = self.small_font.render("Avoid", True, (20, 40, 70))
+                right = self.small_font.render("and obstacles.", True, (20, 40, 70))
+
+                # วาด: LEFT → ICON → RIGHT
+                base_x = panel_rect.x + 40
+                surf.blit(left, (base_x, y))
+                surf.blit(self.tree_img, (base_x + left.get_width() + 10, y - 4))
+                surf.blit(
+                    right,
+                    (base_x + left.get_width() + 10 + self.tree_img.get_width() + 8, y)
+                )
+
+                y += 36
+                continue
+
+            # บรรทัด 4 — Collect [present] and special items.
+            if i == 3 and self.ice_img is not None:
+                left = self.small_font.render("Collect", True, (20, 40, 70))
+                right = self.small_font.render("and special items.", True, (20, 40, 70))
+
+                base_x = panel_rect.x + 40
+                surf.blit(left, (base_x, y))
+                surf.blit(self.ice_img, (base_x + left.get_width() + 10, y - 2))
+                surf.blit(
+                    right,
+                    (base_x + left.get_width() + 10 + self.ice_img.get_width() + 8, y)
+                )
+
+                y += 36
+                continue
+
+            # บรรทัด 5 — Enter [igloo] to go to special maps.
+            if i == 4 and self.igloo_img is not None:
+                left = self.small_font.render("Enter", True, (20, 40, 70))
+                right = self.small_font.render("to go to special maps.", True, (20, 40, 70))
+
+                base_x = panel_rect.x + 40
+                surf.blit(left, (base_x, y))
+                surf.blit(self.igloo_img, (base_x + left.get_width() + 10, y - 4))
+                surf.blit(
+                    right,
+                    (base_x + left.get_width() + 10 + self.igloo_img.get_width() + 8, y)
+                )
+
+                y += 36
+                continue
+
+            # บรรทัดอื่น — ปกติ (ไม่มี icon)
             txt = self.small_font.render(line, True, (20, 40, 70))
             surf.blit(txt, (panel_rect.x + 40, y))
             y += 30
 
-        # ปุ่ม BACK
+        # ปุ่ม BACK + hover
         self.button_back.center = (panel_rect.centerx, panel_rect.bottom - 40)
-        pg.draw.rect(surf, (120, 160, 255), self.button_back, border_radius=14)
-        pg.draw.rect(surf, (60, 100, 200),  self.button_back, width=2, border_radius=14)
+
+        mx, my = pg.mouse.get_pos()
+        hovered = self.button_back.collidepoint(mx, my)
+
+        if hovered:
+            fill_color   = (140, 180, 255)  # สว่างขึ้น
+            border_color = (40, 80, 180)
+        else:
+            fill_color   = (120, 160, 255)
+            border_color = (60, 100, 200)
+
+        pg.draw.rect(surf, fill_color, self.button_back, border_radius=14)
+        pg.draw.rect(surf, border_color, self.button_back, width=2, border_radius=14)
         back_txt = self.font.render("BACK", True, (255, 255, 255))
         surf.blit(back_txt, back_txt.get_rect(center=self.button_back.center))
 
