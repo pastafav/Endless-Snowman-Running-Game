@@ -10,6 +10,17 @@ if PARENT not in sys.path:
     sys.path.insert(0, PARENT)
 # ---------------------------------------------------------------
 
+# When packaged with PyInstaller, ensure relative asset paths (image/, sound/) resolve.
+# Switch CWD to the bundle's data dir (sys._MEIPASS) or to olaf-v2 root when running from source.
+try:
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        os.chdir(sys._MEIPASS)
+    else:
+        os.chdir(ROOT)
+except Exception:
+    # If changing CWD fails, continue; asset loads that use ROOT will still work for HUD.
+    pass
+
 # ── Window / timing ───────────────────────────────────────────────────────────
 WIDTH, HEIGHT = 1280, 720
 FPS = 60

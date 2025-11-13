@@ -1,0 +1,60 @@
+name: Build Windows EXE
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'olaf-v2/**'
+      - 'scripts/build_win.ps1'
+      - 'snow_survivor.spec'
+      - '.github/workflows/windows-build.yml'
+      - 'requirements.txt'
+      - 'requirements-build.txt'
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install -U pip
+          if (Test-Path requirements.txt) { python -m pip install -r requirements.txt }
+          if (Test-Path requirements-build.txt) { python -m pip install -r requirements-build.txt } else { python -m pip install pyinstaller }
+
+      - name: Build with PyInstaller
+        shell: pwsh
+        run: |
+          python -m PyInstaller `
+            --noconfirm `
+            --clean `
+            --name SnowSurvivor `
+            --add-data "olaf-v2\image;image" `
+            --add-data "olaf-v2\sound;sound" `
+            --windowed `
+            olaf-v2\run.py
+
+      - name: Package artifact
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist\SnowSurvivor-win | Out-Null
+          if (Test-Path dist\SnowSurvivor.exe) { Copy-Item dist\SnowSurvivor.exe dist\SnowSurvivor-win }
+          if (Test-Path dist\SnowSurvivor) { Copy-Item -Recurse -Force dist\SnowSurvivor dist\SnowSurvivor-win\SnowSurvivor }
+          Set-Content -Path dist\SnowSurvivor-win\README.txt -Value @'
+Double-click SnowSurvivor.exe to play.
+If SmartScreen warns, click More info → Run anyway.
+'@
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SnowSurvivor-Windows
+          path: dist/SnowSurvivor-win
