@@ -6,6 +6,13 @@ import pygame, sys, math
 from pathlib import Path
 from spawner import Spawner, FallingSprite, load_image, PresentItem, SpecialBuff, Obstacle
 
+
+# <<< เพิ่ม import Scenes  >>>
+# ถ้า screens.py อยู่ในโฟลเดอร์ person3_ui ให้ใช้:
+from person3_ui.screens import TitleScene, PauseScene, GameOverScene, HowToScene
+from person3_ui.hud import HUD
+
+
 # --- Config ---
 WIDTH, HEIGHT = 1280, 720            # window size (you can make it fullscreen or desktop size)
 FPS = 60
@@ -36,13 +43,8 @@ screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Snow Survivor - Map (Top-down)")
 clock = pygame.time.Clock()
 font = pygame.font.SysFont("Consolas", 20)
-pygame.mixer.init()
-
-# --- BG Music ---
-pygame.mixer.music.load("sound/snowy_bm.mp3") 
-pygame.mixer.music.play(loops=-1)
-pygame.mixer.music.set_volume(0.2)
-
+screens_font = pygame.font.SysFont("Consolas", 32)
+hud = HUD(font)
 
 # --- Load & prepare background image ---
 def load_bg(path):
@@ -119,9 +121,8 @@ HELL_OBSTACLE_PATHS = [Path("image/TreeOnFire_2.png"), Path("image/Lava_2.png"),
 HELL_PRESENT_PATH = Path("image/Present_1.png")  # duplicate explicit path (avoid forward reference issues)
 HELL_SPECIAL_PATHS = [Path("image/Moose_item_1.png"), Path("image/Carrot_1.png"), Path("image/Icecube_1.png")]  # reuse specials
 HELL_ASSET_SIZE_OVERRIDES = {
-    "IceShards_1": 200,
-    "Moose_item_1": 170,
-    "TreeOnFire_2": 200,
+    "IceShards_1": 120,
+    "Moose_item_1": 130,
 }
 
 # Transition items
@@ -134,15 +135,14 @@ HELL_SPECIAL_INTERVAL_RANGE = (2.0, 4.0)  # make specials (icecubes) appear freq
 HELL_INITIAL_MELT = 25.0  # seconds of survival when entering hell
 ICECUBE_MELT_ADD = 12.0   # seconds added per icecube
 
-PRESENT_SIZE = 80
-OBSTACLE_SIZE = 100 # base size for generic obstacles (Tree)
+PRESENT_SIZE = 56
+OBSTACLE_SIZE = 75   # base size for generic obstacles (Tree)
 SPECIAL_SIZE = 80     # base size for specials (Carrot)
 
 # Asset-specific overrides (stem -> size) for fine control
 ASSET_SIZE_OVERRIDES = {
-    "IceShards_1": 200,      # significantly larger for visibility
-    "Moose_item_1": 170,     # larger moose item
-    "Tree_1": 200,
+    "IceShards_1": 120,      # significantly larger for visibility
+    "Moose_item_1": 130,     # larger moose item
 }
 
 OBSTACLE_SPEED = 260
@@ -313,10 +313,75 @@ elapsed_run_time = 0.0  # seconds since leaving start screen (unpaused)
 igloo_spawned = False
 EXTRA_SPEED_FOR_IGLOO = 60.0  # slight drift in addition to background to approach player
 
+
+# --- Scene objects) ---
+title_scene = TitleScene(screens_font)
+howto_scene = HowToScene(screens_font)
+pause_scene = PauseScene(screens_font)
+game_over_scene = GameOverScene(screens_font)
+
 # --- Main loop state ---
 running = True
 paused = False
-show_start = True
+#show_start = True
+current_scene = "title"   # "title", "game", "pause", "game_over"
+current_speed = BG_SCROLL_SPEED_BASE  # เพื่อให้ debug HUD ไม่ error
+
+def reset_to_snow():
+    global spawner, elapsed_run_time, bg_offset, igloo_spawned, paused, current_bg_img
+    game_state.clear()
+    game_state.update({
+        'score': 0,
+        'active_buff': None,
+        'phase': 'run',
+    })
+    # clear moving sprites (ยกเว้น player)
+    for g in (spawner.obstacles, spawner.collectibles, spawner.special_items, igloos):
+        for spr in list(g):
+            spr.kill()
+    # reset player ไปกลาง lane กลาง
+    player.lane = 1
+    player.target_x = adjusted_lane_x(1)
+    player.rect.centerx = player.target_x
+
+    elapsed_run_time = 0.0
+    bg_offset = 0.0
+    igloo_spawned = False
+    paused = False
+    current_bg_img = bg_img
+
+    spawner_config = dict(
+        lane_centers=lane_centers,
+        adjusted_lane_x=adjusted_lane_x,
+        all_sprites=all_sprites,
+        present_size=PRESENT_SIZE,
+        obstacle_size=OBSTACLE_SIZE,
+        special_size=SPECIAL_SIZE,
+        obstacle_speed=OBSTACLE_SPEED,
+        present_speed=PRESENT_SPEED,
+        special_speed=SPECIAL_SPEED,
+        obstacle_interval=OBSTACLE_INTERVAL_RANGE,
+        present_interval=PRESENT_INTERVAL_RANGE,
+        special_interval=SPECIAL_INTERVAL_RANGE,
+        spawn_accel_factor=SPAWN_ACCEL_FACTOR,
+        base_speed=BG_SCROLL_SPEED_BASE,
+        max_speed=BG_SCROLL_SPEED_MAX,
+        offscreen_buffer=OFFSCREEN_BUFFER,
+        relative_scroll_mode=RELATIVE_SCROLL_MODE,
+        relative_extra_factor=RELATIVE_EXTRA_SPEED_FACTOR,
+        present_score_value=PRESENT_SCORE_VALUE,
+        special_score_bonus=SPECIAL_SCORE_BONUS,
+    )
+
+    # กลับเป็น snow map assets
+    globals()['spawner'] = Spawner(
+        obstacle_paths=OBSTACLE_PATHS,
+        present_path=PRESENT_PATH,
+        special_paths=SPECIAL_PATHS,
+        size_overrides=ASSET_SIZE_OVERRIDES,
+        **spawner_config,
+    )
+
 
 # --- Helper: draw tiled vertical background ---
 def draw_scrolling_bg(surf, img, offset):
@@ -340,6 +405,150 @@ while running:
         elif ev.type == pygame.KEYDOWN:
             if ev.key == pygame.K_ESCAPE:
                 running = False
+
+        
+        # ---------- Title Scene ----------
+        if current_scene == "title":
+            result = title_scene.handle_event(ev)
+            if result:
+                action = result.get("action")
+                if action == "start_game":
+                    paused = False
+                    game_state['score'] = 0
+                    game_state['phase'] = 'run'
+                    current_scene = "game"
+                elif action == "show_howto":
+                    current_scene = "howto"
+
+
+        elif current_scene == "howto":
+            result = howto_scene.handle_event(ev)
+            if result and result.get("action") == "back_to_title":
+                current_scene = "title"
+
+
+        # ---------- GAME SCENE ----------
+        elif current_scene == "game":
+            if ev.type == pygame.KEYDOWN:
+                if ev.key == pygame.K_p:
+                    paused = not paused
+                    if paused:
+                        current_scene = "pause"
+                elif not paused:
+                    if ev.key in (pygame.K_LEFT, pygame.K_a):
+                        player.move_left()
+                    elif ev.key in (pygame.K_RIGHT, pygame.K_d):
+                        player.move_right()
+
+
+        # ---------- PAUSE SCENE ----------
+        elif current_scene == "pause":
+            if ev.type == pygame.KEYDOWN and ev.key == pygame.K_p:
+                paused = False
+                current_scene = "game"       
+
+         # ---------- GAME OVER SCENE ----------
+        elif current_scene == "game_over":
+            if ev.type == pygame.KEYDOWN:
+                if ev.key == pygame.K_r:
+                    # รีสตาร์ตเกม (เรียกฟังก์ชัน reset หรือเขียนรีเซ็ตเอง)
+                    # reset_to_snow()
+                    game_state['score'] = 0
+                    game_state['phase'] = 'run'
+                    current_scene = "game"
+                elif ev.key == pygame.K_ESCAPE:
+                    running = False
+
+    # ---------- UPDATE GAME LOGIC ----------
+    if current_scene == "game" and not paused:
+        elapsed_run_time += dt
+
+        portion = min(1.0, elapsed_run_time / max(0.001, TIME_TO_MAX))
+        portion_curved = portion ** SPEED_CURVE
+        current_speed = BG_SCROLL_SPEED_BASE + (BG_SCROLL_SPEED_MAX - BG_SCROLL_SPEED_BASE) * portion_curved
+
+        bg_offset -= current_speed * dt
+
+        if (game_state['phase'] == 'run') and (elapsed_run_time >= IGLOO_TRIGGER_TIME) and not igloo_spawned:
+            game_state['phase'] = 'igloo_phase'
+            igloo_spawned = True
+            spawn_igloos(current_speed)
+
+        if game_state['phase'] == 'run':
+            spawner.update(dt, current_speed)
+
+        for spr in all_sprites:
+            if isinstance(spr, FallingSprite):
+                spr.update(dt, current_speed)
+            else:
+                spr.update(dt)
+
+        spawner.handle_collisions(player, game_state)
+
+        if game_state.get('phase') == 'hell':
+            for buff_name in game_state.get('frame_collected_specials', []):
+                if buff_name.lower().startswith('icecube'):
+                    game_state['melt'] = min(120.0, game_state.get('melt', 0.0) + ICECUBE_MELT_ADD)
+
+        for ig in pygame.sprite.spritecollide(player, igloos, dokill=True):
+            if isinstance(ig, Igloo):
+                ig.on_enter(game_state)
+                current_bg_img = hell_bg_img
+                bg_offset = 0.0
+                elapsed_run_time = 0.0
+                game_state['melt'] = HELL_INITIAL_MELT
+                game_state['phase'] = 'hell'
+                globals()['spawner'] = Spawner(
+                    lane_centers=lane_centers,
+                    adjusted_lane_x=adjusted_lane_x,
+                    all_sprites=all_sprites,
+                    obstacle_paths=HELL_OBSTACLE_PATHS,
+                    present_path=HELL_PRESENT_PATH,
+                    special_paths=HELL_SPECIAL_PATHS,
+                    present_size=PRESENT_SIZE,
+                    obstacle_size=OBSTACLE_SIZE,
+                    special_size=SPECIAL_SIZE,
+                    size_overrides=HELL_ASSET_SIZE_OVERRIDES,
+                    obstacle_speed=OBSTACLE_SPEED,
+                    present_speed=PRESENT_SPEED,
+                    special_speed=SPECIAL_SPEED,
+                    obstacle_interval=OBSTACLE_INTERVAL_RANGE,
+                    present_interval=PRESENT_INTERVAL_RANGE,
+                    special_interval=HELL_SPECIAL_INTERVAL_RANGE,
+                    spawn_accel_factor=SPAWN_ACCEL_FACTOR,
+                    base_speed=BG_SCROLL_SPEED_BASE,
+                    max_speed=BG_SCROLL_SPEED_MAX,
+                    offscreen_buffer=OFFSCREEN_BUFFER,
+                    relative_scroll_mode=RELATIVE_SCROLL_MODE,
+                    relative_extra_factor=RELATIVE_EXTRA_SPEED_FACTOR,
+                    present_score_value=PRESENT_SCORE_VALUE,
+                    special_score_bonus=SPECIAL_SCORE_BONUS,
+                )
+                hell_initialized = True
+
+        if game_state['phase'] == 'hell':
+            spawner.update(dt, current_speed)
+            if 'melt' in game_state:
+                hud.set_mode("hell")
+                hud.set_hell_survival(game_state['melt'])
+
+                game_state['melt'] = max(0.0, game_state['melt'] - dt)
+                if game_state['melt'] <= 0.0:
+                    game_state['melt'] = 0.0
+                    game_state['phase'] = 'melted'
+                    # เข้า GameOverScene พร้อมคะแนน (distance ใส่ 0 ไว้ก่อน ถ้าอยากใช้ค่อยคำนวณเพิ่ม)
+                    score = int(game_state.get('score', 0))
+                    distance = 0
+                    game_over_scene.on_enter(score=score, distance=distance)
+                    current_scene = "game_over"
+
+        if game_state.get('phase') != 'hell':
+            hud.set_mode("normal")
+
+
+
+
+            """
             if game_state.get('phase') == 'melted' and ev.key == pygame.K_r:
                 # Restart back at snow map initial state without quitting program
                 game_state.clear()
@@ -389,10 +598,6 @@ while running:
                 show_start = False
             elif ev.key == pygame.K_p:
                 paused = not paused
-                if paused:
-                    pygame.mixer.music.pause()
-                else:
-                    pygame.mixer.music.unpause()
             elif ev.key in (pygame.K_LEFT, pygame.K_a):
                 if not paused:
                     player.move_left()
@@ -492,13 +697,24 @@ while running:
                 game_state['melt'] = max(0.0, game_state['melt'] - dt)
                 if game_state['melt'] <= 0.0:
                     # Do NOT close the game; just pause and show an overlay so player can restart.
-                    game_state['melt'] = 0.0
-                    game_state['phase'] = 'melted'
-                    paused = True
-
+                    #game_state['melt'] = 0.0
+                    #game_state['phase'] = 'melted'
+                   # paused = True
+ """
     # --- Draw ---
-    draw_scrolling_bg(screen, current_bg_img, bg_offset)
+    
+    #draw_scrolling_bg(screen, current_bg_img, bg_offset)
+    if current_scene == "title":
+        title_scene.draw(screen)
+    elif current_scene == "howto":
+        howto_scene.draw(screen)
+    else:
+        draw_scrolling_bg(screen, current_bg_img, bg_offset)
 
+        for cx in lane_centers:
+            pygame.draw.line(screen, (200, 230, 255, 60), (cx, 0), (cx, HEIGHT), 1)
+
+        all_sprites.draw(screen)
     # optional: draw subtle grid overlay to help check lane centers (remove in final)
     # grid color low alpha
     # for debug, we'll draw thin grid matching pixel-block look if you want
@@ -509,49 +725,44 @@ while running:
     # draw lane separators (visual guides) - optional, comment out in final
     # compute three vertical guide lines at each playable lane center
     # draw faint lines
-    for cx in lane_centers:
-        pygame.draw.line(screen, (200, 230, 255, 60), (cx, 0), (cx, HEIGHT), 1)
+   # for cx in lane_centers:
+    #    pygame.draw.line(screen, (200, 230, 255, 60), (cx, 0), (cx, HEIGHT), 1)
 
     # sprites
-    all_sprites.draw(screen)
+    #all_sprites.draw(screen)
     # spawner sprites already in all_sprites; optional category draw if desired:
     # spawner.obstacles.draw(screen)
 
-    # HUD placeholders
-    if show_start:
-        # start overlay
-        overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-        overlay.fill((10, 18, 28, 170))
-        screen.blit(overlay, (0,0))
-        title = pygame.font.SysFont("Consolas", 48).render("Snow Survivor - Press any key", True, (255,255,255))
-        screen.blit(title, (WIDTH//2 - title.get_width()//2, HEIGHT//2 - 24))
-    else:
-        txt = font.render("Use Left/Right (A/D)  •  (P) Pause", True, (20, 30, 40))
-        screen.blit(txt, (10, 8))
-        hud_score = font.render(f"Score: {game_state['score']}", True, (28, 42, 58))
-        screen.blit(hud_score, (10, 32))
-        if game_state['active_buff']:
-            hud_buff = font.render(f"Buff: {game_state['active_buff']}", True, (50, 70, 90))
-            screen.blit(hud_buff, (10, 56))
-        if game_state['phase'] == 'igloo_phase':
-            hint = font.render("Choose an Igloo to enter — random mini game", True, (30, 45, 60))
-            screen.blit(hint, (10, 104))
-        if game_state.get('phase') in ('hell', 'melted') and 'melt' in game_state:
-            melt_txt = font.render(f"Melt: {game_state['melt']:.1f}s", True, (200, 40, 40))
-            screen.blit(melt_txt, (10, 104))
-        if not paused:
-            dbg_speed = font.render(f"Speed: {int(current_speed)} px/s", True, (30, 45, 60))
-            screen.blit(dbg_speed, (10, 80))
+        # HUD placeholders
 
-    # Melt overlay and restart hint
-    if game_state.get('phase') == 'melted':
-        overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-        overlay.fill((20, 0, 0, 170))
-        screen.blit(overlay, (0, 0))
-        title = pygame.font.SysFont("Consolas", 42).render("The snowman melted!", True, (255, 220, 220))
-        sub = pygame.font.SysFont("Consolas", 22).render("Press R to restart (snow map) or ESC to quit", True, (255, 230, 230))
-        screen.blit(title, (WIDTH//2 - title.get_width()//2, HEIGHT//2 - 40))
-        screen.blit(sub, (WIDTH//2 - sub.get_width()//2, HEIGHT//2 + 4))
+        if current_scene in ("game", "pause"):
+                txt = font.render("Use Left/Right (A/D)  •  (P) Pause", True, (20, 30, 40))
+                screen.blit(txt, (10, 8))
+                hud_score = font.render(f"Score: {game_state['score']}", True, (28, 42, 58))
+                screen.blit(hud_score, (10, 32))
+                if game_state['active_buff']:
+                    hud_buff = font.render(f"Buff: {game_state['active_buff']}", True, (50, 70, 90))
+                    screen.blit(hud_buff, (10, 56))
+                if game_state['phase'] == 'igloo_phase':
+                    hint = font.render("Choose an Igloo to enter — random mini game", True, (30, 45, 60))
+                    screen.blit(hint, (10, 104))
+                if game_state.get('phase') in ('hell', 'melted') and 'melt' in game_state:
+                    melt_txt = font.render(f"Melt: {game_state['melt']:.1f}s", True, (200, 40, 40))
+                    screen.blit(melt_txt, (10, 104))
+                if current_scene == "game":
+                    dbg_speed = font.render(f"Speed: {int(current_speed)} px/s", True, (30, 45, 60))
+                    screen.blit(dbg_speed, (10, 80))
+
+        # วาด Pause / GameOver overlay ตาม scene
+        if current_scene == "pause":
+            pause_scene.draw(screen)
+        elif current_scene == "game_over":
+            game_over_scene.draw(screen)
+        
+        # วาด HUD (หัวใจ + survival bar) เฉพาะตอนเล่น/พักเกม
+        if current_scene in ("game", "pause"):
+            hud.draw(screen)
+
 
     pygame.display.flip()
 
