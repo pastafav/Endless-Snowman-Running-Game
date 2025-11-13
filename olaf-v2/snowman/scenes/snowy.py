@@ -32,10 +32,10 @@ OBSTACLE_PATHS = [Path("image/Tree_1.png"), Path("image/IceShards_1.png")]
 PRESENT_PATH   = Path("image/Present_1.png")
 SPECIAL_PATHS  = [Path("image/Moose_item_1.png"), Path("image/Carrot_1.png")]
 
-PRESENT_SIZE  = 56
-OBSTACLE_SIZE = 75
-SPECIAL_SIZE  = 80
-ASSET_SIZE_OVERRIDES = {"IceShards_1": 120, "Moose_item_1": 130}
+PRESENT_SIZE  = 76
+OBSTACLE_SIZE = 95
+SPECIAL_SIZE  = 100
+ASSET_SIZE_OVERRIDES = {"IceShards_1": 140, "Moose_item_1": 150,"Tree_1": 150}
 
 OBSTACLE_SPEED = 260
 PRESENT_SPEED  = 250
@@ -52,7 +52,7 @@ RELATIVE_EXTRA_SPEED_FACTOR = 1.0
 
 # ── Igloo/minigames ──────────────────────────────────────────────────────────
 IGLOO_PATH = Path("image/Igloo_2.png")
-IGLOO_SIZE = 90
+IGLOO_SIZE = 110
 IGLOO_INTERVAL_RANGE = (7.0, 14.0)
 
 IGLOO_TRIGGER_TIME   = 50.0  # time until first igloo calm-zone starts
@@ -63,7 +63,7 @@ MOOSE_RUN_1      = Path("image/Moose_run_1.png")
 MOOSE_RUN_2      = Path("image/Moose_run_2.png")
 MOOSE_TURN_LEFT  = Path("image/Moose_turn_left.png")
 MOOSE_TURN_RIGHT = Path("image/Moose_turn_right.png")
-MOOSE_SIZE       = 96
+MOOSE_SIZE       = 116
 MOOSE_FPS        = 8.0
 MOOSE_TURN_TIME  = 0.18
 
@@ -71,7 +71,7 @@ MOOSE_TURN_TIME  = 0.18
 HEAD_PATHS_TRY = [Path("image/split/Head_1.png"), Path("image/split/Head_1 (1).png")]
 UPPER_PATH     = Path("image/split/UpperBody_1.png")
 LOWER_PATH     = Path("image/split/LowerBody_1.png")
-HEAD_SIZE      = 56
+HEAD_SIZE      = 84
 HEAD_BOB_PIX   = 12
 HEAD_FADE_OUT  = 0.35
 
@@ -496,10 +496,10 @@ class SnowyScene:
                 print(f"[Sound] Failed to load {path}: {e}")
                 self.sounds[name] = None
 
-        _safe_sound("present", "sound/present_collected.wav", 0.9)
-        _safe_sound("special", "sound/item_collected.wav",    0.9)
-        _safe_sound("hit",     "sound/obstacles_hit.wav",     0.9)
-        _safe_sound("fail",    "sound/failing.wav",           0.9)
+        _safe_sound("present", "sound/present_collected.wav", 0.2)
+        _safe_sound("special", "sound/item_collected.wav",    0.2)
+        _safe_sound("hit",     "sound/obstacles_hit.wav",     0.5)
+        _safe_sound("fail",    "sound/failing.wav",           0.2)
 
         # moose frames
         self.player.load_moose_frames(
@@ -1019,9 +1019,9 @@ class _Player(pygame.sprite.Sprite):
     def _load_or_make_normal(self) -> pygame.Surface:
         try:
             img = pygame.image.load("image/Snowman_idle2.png").convert_alpha()
-            return pygame.transform.smoothscale(img, (64, 64))
+            return pygame.transform.smoothscale(img, (84, 84))
         except Exception:
-            size = 64
+            size = 84
             surf = pygame.Surface((size, size), pygame.SRCALPHA)
             pygame.draw.circle(surf, (245,245,255), (size//2, size//2), size//2)
             pygame.draw.circle(surf, (200,200,200), (size//2, size//2+6), size//2-6, 3)

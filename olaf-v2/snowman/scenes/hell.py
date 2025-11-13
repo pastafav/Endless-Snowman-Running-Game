@@ -35,10 +35,10 @@ OBSTACLE_PATHS = [
 PRESENT_PATH   = Path("image/Icecube_1.png")  # “presents” are ice cubes
 SPECIAL_PATHS  = [Path("image/Moose_item_1.png"), Path("image/Carrot_1.png")]
 
-PRESENT_SIZE  = 56
-OBSTACLE_SIZE = 75
-SPECIAL_SIZE  = 80
-ASSET_SIZE_OVERRIDES = {"IceShards_1": 120, "Moose_item_1": 130}
+PRESENT_SIZE  = 76
+OBSTACLE_SIZE = 95
+SPECIAL_SIZE  = 100
+ASSET_SIZE_OVERRIDES = {"Lava_2": 140, "Moose_item_1": 150,"TreeOnFire_2": 150}
 
 OBSTACLE_SPEED = 260
 PRESENT_SPEED  = 250
@@ -61,13 +61,13 @@ MOOSE_RUN_1      = Path("image/Moose_run_1.png")
 MOOSE_RUN_2      = Path("image/Moose_run_2.png")
 MOOSE_TURN_LEFT  = Path("image/Moose_turn_left.png")
 MOOSE_TURN_RIGHT = Path("image/Moose_turn_right.png")
-MOOSE_SIZE       = 96
+MOOSE_SIZE       = 116
 MOOSE_FPS        = 8.0
 MOOSE_TURN_TIME  = 0.18
 
 # ── Carrot split-head FX (same as Snowy) ─────────────────────────────────────
 HEAD_PATHS_TRY = [Path("image/split/Head_1.png"), Path("image/split/Head_1 (1).png")]
-HEAD_SIZE      = 56
+HEAD_SIZE      = 84
 HEAD_BOB_PIX   = 12
 HEAD_FADE_OUT  = 0.35
 
@@ -168,10 +168,10 @@ class HellScene:
             except Exception as e:
                 print(f"[Sound] Failed to load {path}: {e}")
                 self.sounds[name] = None
-        _safe_sound("present", "sound/present_collected.wav", 0.9)
-        _safe_sound("special", "sound/item_collected.wav",    0.9)
-        _safe_sound("hit",     "sound/obstacles_hit.wav",     0.9)
-        _safe_sound("fail",    "sound/failing.wav",           0.9)
+        _safe_sound("present", "sound/present_collected.wav", 0.2)
+        _safe_sound("special", "sound/item_collected.wav",    0.2)
+        _safe_sound("hit",     "sound/obstacles_hit.wav",     0.5)
+        _safe_sound("fail",    "sound/failing.wav",           0.2)
 
         # Moose frames (same as Snowy)
         self.player.load_moose_frames(
@@ -578,11 +578,11 @@ class _Player(pygame.sprite.Sprite):
         for p in ("image/Snowman_idle2.png",):
             try:
                 img = pygame.image.load(p).convert_alpha()
-                return pygame.transform.smoothscale(img, (64, 64))
+                return pygame.transform.smoothscale(img, (84, 84))
             except Exception:
                 pass
         # Fallback
-        size = 64
+        size = 84
         surf = pygame.Surface((size, size), pygame.SRCALPHA)
         pygame.draw.circle(surf, (255, 210, 210), (size//2, size//2), size//2)
         pygame.draw.circle(surf, (180, 60, 60), (size//2, size//2 + 6), size//2 - 6, 3)
