@@ -233,6 +233,13 @@ def main():
     summary_time_sec = 0.0
     summary_presents = 0
 
+    # Transition (fade) state
+    transitioning = False
+    transition_alpha = 0  # 0..255
+    transition_target = None
+    transition_speed = 800.0  # alpha units per second
+    transition_phase = None   # 'out' or 'in'
+
     while running:
         now = time.perf_counter()
         dt = now - last_time
@@ -334,10 +341,13 @@ def main():
             and not show_pause_menu
             and manager.current_name == "hell"
             and elapsed_since_switch >= SWITCH_INTERVAL
+            and not transitioning
         ):
-            print("[Timer] Auto-switching from HELL to SNOWY")
-            manager.switch_to("snowy", reset=True)
-            elapsed_since_switch = 0.0
+            print("[Timer] Auto-switching from HELL to SNOWY (with fade)")
+            transitioning = True
+            transition_alpha = 0
+            transition_target = "snowy"
+            transition_phase = 'out'
 
         # ── update & handle scene-requests ───────────────────────────────────
         if not (show_game_over_menu or show_title_screen or show_howto_screen or show_pause_menu):
@@ -346,8 +356,12 @@ def main():
             req = manager.shared.pop("_next_scene", None)
             if req and not manager.is_game_over():
                 print(f"[SceneRequest] Scene requested switch to '{req}'")
-                manager.switch_to(req, reset=True)
-                elapsed_since_switch = 0.0
+                # If already transitioning, ignore; else do an immediate soft fade-in
+                if not transitioning:
+                    transitioning = True
+                    transition_alpha = 0
+                    transition_target = req
+                    transition_phase = 'out'
 
         # ── draw base scene ─────────────────────────────────────────────────
         manager.draw()
@@ -477,6 +491,25 @@ def main():
                     "Press R to Restart or Q to Quit", True, (235, 235, 235)
                 )
                 screen.blit(hint, hint.get_rect(center=(WIDTH//2, HEIGHT//2 + 170)))
+
+        # Handle fade transition overlay and switching
+        if transitioning:
+            ov = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+            if transition_phase == 'out':
+                transition_alpha = min(255, transition_alpha + int(transition_speed * dt))
+                ov.fill((0, 0, 0, max(0, min(255, transition_alpha))))
+                screen.blit(ov, (0, 0))
+                if transition_alpha >= 255 and transition_target:
+                    manager.switch_to(transition_target, reset=True)
+                    elapsed_since_switch = 0.0
+                    transition_phase = 'in'
+            elif transition_phase == 'in':
+                transition_alpha = max(0, transition_alpha - int(transition_speed * dt))
+                ov.fill((0, 0, 0, max(0, min(255, transition_alpha))))
+                screen.blit(ov, (0, 0))
+                if transition_alpha <= 0:
+                    transitioning = False
+                    transition_phase = None
 
         pygame.display.flip()
         clock.tick(FPS)

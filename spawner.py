@@ -143,6 +143,8 @@ class Spawner:
         # scoring
         present_score_value: int = 1,
         special_score_bonus: int = 5,
+        # spawn safety
+        min_lane_gap_px: int = 220,
     ) -> None:
         self.lane_centers = lane_centers
         self.adjusted_lane_x = adjusted_lane_x
@@ -167,6 +169,7 @@ class Spawner:
         self.relative_extra_factor = relative_extra_factor
         self.present_score_value = present_score_value
         self.special_score_bonus = special_score_bonus
+        self.min_lane_gap_px = min_lane_gap_px
 
         # sprite groups
         self.all_sprites = all_sprites
@@ -178,6 +181,9 @@ class Spawner:
         self.next_obstacle_time = self._rand_interval(self.obstacle_interval)
         self.next_present_time = self._rand_interval(self.present_interval)
         self.next_special_time = self._rand_interval(self.special_interval)
+
+        # per-lane cooldowns to avoid overlapping spawns in the same lane
+        self._lane_block_timers: list[float] = [0.0 for _ in self.lane_centers]
 
     # helpers ------------------------------------------------------------------
     def _size_for_path(self, path: Path, default_size: int) -> int:
@@ -198,7 +204,12 @@ class Spawner:
 
     # spawning -----------------------------------------------------------------
     def _spawn_obstacle(self, current_speed: float) -> None:
-        lane = randint(0, len(self.lane_centers) - 1)
+        available = [i for i, t in enumerate(self._lane_block_timers) if t <= 0.0]
+        if not available:
+            # No safe lane right now; try a bit later
+            self.next_obstacle_time += 0.05
+            return
+        lane = choice(available)
         path = choice(self.obstacle_paths)
         size = self._size_for_path(path, self.obstacle_size)
         img = load_image(path, size)
@@ -212,9 +223,21 @@ class Spawner:
         )
         self.obstacles.add(sprite)
         self.all_sprites.add(sprite)
+        # set lane block time based on combined downward speed
+        if self.relative_scroll_mode:
+            total_speed = current_speed + (self.obstacle_speed * speed_scale * self.relative_extra_factor)
+        else:
+            total_speed = self.obstacle_speed * speed_scale
+        gap_px = self.min_lane_gap_px + img.get_height() * 0.5
+        cooldown = gap_px / max(1.0, total_speed)
+        self._lane_block_timers[lane] = max(self._lane_block_timers[lane], cooldown)
 
     def _spawn_present(self, current_speed: float) -> None:
-        lane = randint(0, len(self.lane_centers) - 1)
+        available = [i for i, t in enumerate(self._lane_block_timers) if t <= 0.0]
+        if not available:
+            self.next_present_time += 0.05
+            return
+        lane = choice(available)
         img = load_image(self.present_path, self.present_size)
         speed_scale = 1.0 + self._speed_portion(current_speed) * 0.6
         sprite = PresentItem(
@@ -227,9 +250,20 @@ class Spawner:
         )
         self.collectibles.add(sprite)
         self.all_sprites.add(sprite)
+        if self.relative_scroll_mode:
+            total_speed = current_speed + (self.present_speed * speed_scale * self.relative_extra_factor)
+        else:
+            total_speed = self.present_speed * speed_scale
+        gap_px = self.min_lane_gap_px + img.get_height() * 0.5
+        cooldown = gap_px / max(1.0, total_speed)
+        self._lane_block_timers[lane] = max(self._lane_block_timers[lane], cooldown)
 
     def _spawn_special(self, current_speed: float) -> None:
-        lane = randint(0, len(self.lane_centers) - 1)
+        available = [i for i, t in enumerate(self._lane_block_timers) if t <= 0.0]
+        if not available:
+            self.next_special_time += 0.05
+            return
+        lane = choice(available)
         path = choice(self.special_paths)
         size = self._size_for_path(path, self.special_size)
         img = load_image(path, size)
@@ -245,9 +279,21 @@ class Spawner:
         )
         self.special_items.add(sprite)
         self.all_sprites.add(sprite)
+        if self.relative_scroll_mode:
+            total_speed = current_speed + (self.special_speed * speed_scale * self.relative_extra_factor)
+        else:
+            total_speed = self.special_speed * speed_scale
+        gap_px = self.min_lane_gap_px + img.get_height() * 0.5
+        cooldown = gap_px / max(1.0, total_speed)
+        self._lane_block_timers[lane] = max(self._lane_block_timers[lane], cooldown)
 
     # API ----------------------------------------------------------------------
     def update(self, dt: float, current_speed: float) -> None:
+        # decrement per-lane block timers
+        for i in range(len(self._lane_block_timers)):
+            if self._lane_block_timers[i] > 0.0:
+                self._lane_block_timers[i] = max(0.0, self._lane_block_timers[i] - dt)
+
         self.next_obstacle_time -= dt
         self.next_present_time -= dt
         self.next_special_time -= dt

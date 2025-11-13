@@ -54,7 +54,7 @@ RELATIVE_EXTRA_SPEED_FACTOR = 1.0
 
 # Melt survival
 MELT_START_SECONDS = 2.0
-ICE_ADD_SECONDS    = 2.0
+ICE_ADD_SECONDS    = 1.0
 
 # ── Moose animation assets (same behavior as Snowy) ──────────────────────────
 MOOSE_RUN_1      = Path("image/Moose_run_1.png")

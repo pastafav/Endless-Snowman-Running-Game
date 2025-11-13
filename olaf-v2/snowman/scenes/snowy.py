@@ -23,10 +23,10 @@ PLAYER_TWEEN = 14.0
 PLAYER_Y = int(HEIGHT * 0.78)
 HORIZONTAL_SPREAD = 0.7
 
-BG_SCROLL_SPEED_BASE = 400
-BG_SCROLL_SPEED_MAX  = 1000
-TIME_TO_MAX          = 60.0
-SPEED_CURVE          = 0.6
+BG_SCROLL_SPEED_BASE = 320
+BG_SCROLL_SPEED_MAX  = 820
+TIME_TO_MAX          = 35.0
+SPEED_CURVE          = 0.80
 
 OBSTACLE_PATHS = [Path("image/Tree_1.png"), Path("image/IceShards_1.png")]
 PRESENT_PATH   = Path("image/Present_1.png")
@@ -55,8 +55,10 @@ IGLOO_PATH = Path("image/Igloo_2.png")
 IGLOO_SIZE = 110
 IGLOO_INTERVAL_RANGE = (7.0, 14.0)
 
-IGLOO_TRIGGER_TIME   = 50.0  # time until first igloo calm-zone starts
-IGLOO_GAP_BEFORE     = 2.0   # 2 seconds of no items before igloos spawn
+IGLOO_TRIGGER_TIME   = 40.0  # time until first igloo calm-zone starts
+# Instead of a long pre-gap, we keep spawning until igloos are near the player
+IGLOO_GAP_BEFORE     = 0.0
+IGLOO_NEAR_PX        = 220   # when player is within this many px vertically, clear items
 
 # ── Moose animation assets ────────────────────────────────────────────────────
 MOOSE_RUN_1      = Path("image/Moose_run_1.png")
@@ -78,8 +80,8 @@ HEAD_FADE_OUT  = 0.35
 
 # ── Igloo falling item ────────────────────────────────────────────────────────
 class IglooItem(FallingSprite):
-    def __init__(self, lane_index, adjusted_lane_x, speed):
-        img = load_image(IGLOO_PATH, IGLOO_SIZE)
+    def __init__(self, lane_index, adjusted_lane_x, speed, size: int = IGLOO_SIZE):
+        img = load_image(IGLOO_PATH, size)
         super().__init__(
             img, lane_index, speed, adjusted_lane_x,
             offscreen_buffer=OFFSCREEN_BUFFER,
@@ -533,7 +535,8 @@ class SnowyScene:
 
         # Igloo timing:
         self.next_igloo_t = IGLOO_TRIGGER_TIME   # countdown until calm-zone start
-        self.pre_igloo_gap = 0.0                # 2s window with no items
+        self.pre_igloo_gap = 0.0                # unused (kept for compatibility)
+        self.igloo_near_calm = False            # once near, stop spawns and clear items
 
         # carrot effect flags
         self.player_hidden   = False   # hide main snowman while split
@@ -576,6 +579,7 @@ class SnowyScene:
 
         self.next_igloo_t = IGLOO_TRIGGER_TIME
         self.pre_igloo_gap = 0.0
+        self.igloo_near_calm = False
 
         self.player_hidden   = False
         self.post_carrot_gap = 0.0
@@ -648,43 +652,50 @@ class SnowyScene:
         current_speed = base_speed * speed_mult
         self.bg_offset -= current_speed * dt
 
-        # ---------- Igloo timing + gap logic ----------
-        # Only care if no igloos on-screen and not inside minigame
-        if len(self.igloos) == 0 and not self.in_minigame:
-            if self.next_igloo_t > 0.0:
-                self.next_igloo_t -= dt
-                if self.next_igloo_t <= 0.0:
-                    # start 2-second calm zone: clear existing items
-                    self.pre_igloo_gap = IGLOO_GAP_BEFORE
-                    for g in (self.spawner.obstacles, self.spawner.collectibles, self.spawner.special_items):
-                        for s in list(g):
-                            s.kill()
-            elif self.pre_igloo_gap > 0.0:
-                self.pre_igloo_gap -= dt
-                if self.pre_igloo_gap <= 0.0:
-                    # gap finished → spawn 3 igloos (one per lane) each with its own game
-                    game_order = list(self.mini_kinds)
-                    random.shuffle(game_order)
-                    for lane_idx, Mini in enumerate(game_order):
-                        ig = IglooItem(
-                            lane_idx,
-                            self.adjusted_lane_x,
-                            PRESENT_SPEED * (1.0 + 0.3 * portion)
-                        )
-                        ig.game_cls = Mini
-                        self.igloos.add(ig)
-                        self.all_sprites.add(ig)
+        # ---------- Igloo timing + proximity calm logic ----------
+        # Spawn igloos when timer elapses; keep world running until they're near the player
+        if not self.in_minigame:
+            if len(self.igloos) == 0:
+                if self.next_igloo_t > 0.0:
+                    self.next_igloo_t -= dt
+                    if self.next_igloo_t <= 0.0:
+                        # spawn 3 igloos (one per lane), keep existing items
+                        game_order = list(self.mini_kinds)
+                        random.shuffle(game_order)
+                        base_lane_w = max(64, int(self.center_width / max(1, PLAYABLE_CENTER_LANES)))
+                        ig_size = max(60, int(base_lane_w - 12))
+                        for lane_idx, Mini in enumerate(game_order):
+                            fast_extra = max(current_speed * 0.5 + 180.0, 560.0)
+                            ig = IglooItem(
+                                lane_idx,
+                                self.adjusted_lane_x,
+                                fast_extra,
+                                size=ig_size
+                            )
+                            ig.game_cls = Mini
+                            self.igloos.add(ig)
+                            self.all_sprites.add(ig)
 
-                    self.next_igloo_t = self._next_igloo_delay(current_speed)
-                    self.pre_igloo_gap = 0.0
+                        self.next_igloo_t = self._next_igloo_delay(current_speed)
+                        self.igloo_near_calm = False
+            else:
+                # Compute vertical proximity of nearest igloo to player's top
+                nearest = min((ig.rect.bottom for ig in self.igloos), default=None)
+                if nearest is not None:
+                    dist = self.player.rect.top - nearest
+                    if dist <= IGLOO_NEAR_PX and not self.igloo_near_calm:
+                        # Enter near-calm: clear existing items and stop spawning
+                        for g in (self.spawner.obstacles, self.spawner.collectibles, self.spawner.special_items):
+                            for s in list(g):
+                                s.kill()
+                        self.igloo_near_calm = True
 
         # post-carrot spawn gap timer
         if self.post_carrot_gap > 0.0:
             self.post_carrot_gap = max(0.0, self.post_carrot_gap - dt)
 
-        # spawn/update: no spawns during igloo calm zone, while igloos are present,
-        # or during post-carrot 1s gap
-        if self.pre_igloo_gap <= 0.0 and len(self.igloos) == 0 and self.post_carrot_gap <= 0.0:
+        # spawn/update: always spawn unless we're in a post-carrot gap or in igloo near-calm
+        if self.post_carrot_gap <= 0.0 and not self.igloo_near_calm:
             self.spawner.update(dt, current_speed)
 
         # sprites
@@ -699,36 +710,55 @@ class SnowyScene:
         # player updated separately (so we can hide him visually)
         self.player.update(dt)
 
-        # collisions (skip when phased)
+        # collisions: allow pickups during phase; obstacles only when not phased
+        # reset per-frame pickup trackers
+        self.state["frame_collected_presents"] = 0
+        self.state["frame_collected_specials"] = []
+
+        # collect presents (always)
+        for c in pygame.sprite.spritecollide(
+            self.player, self.spawner.collectibles, dokill=True,
+            collided=pygame.sprite.collide_circle_ratio(1.25)
+        ):
+            self.state["frame_collected_presents"] += 1
+
+        # collect specials (always)
+        for sp in pygame.sprite.spritecollide(
+            self.player, self.spawner.special_items, dokill=True,
+            collided=pygame.sprite.collide_circle_ratio(1.25)
+        ):
+            name = getattr(sp, "buff_type", "special")
+            fl = self.state.get("frame_collected_specials", [])
+            fl.append(name)
+            self.state["frame_collected_specials"] = fl
+
+        # apply present pickup effects and sound
+        picked = self.state.get("frame_collected_presents", 0)
+        if picked > 0:
+            self.shared["presents"] += picked
+            self.state["pickup_flash"] = max(self.state["pickup_flash"], 0.12)
+            if self.sounds.get("present"):
+                self.sounds["present"].play()
+
+        # apply special pickup effects and sound
+        specials = [n.lower() for n in self.state.get("frame_collected_specials", [])]
+        if specials:
+            if any(("carrot" in n) for n in specials):
+                self.state["phase_kind"] = "carrot"
+                self.state["phase_timer"] = 2.0
+                self.state["phase_start_flash"] = 0.25
+                self.player_hidden = True   # hide main character
+                self._spawn_split_parts()
+            if any(("moose" in n) for n in specials):
+                self.state["phase_kind"] = "moose"
+                self.state["phase_timer"] = 2.0
+                self.state["phase_start_flash"] = 0.25
+                self.player.set_mode("moose")
+            if self.sounds.get("special"):
+                self.sounds["special"].play()
+
+        # obstacle hits only when not phased
         if self.state["phase_timer"] <= 0.0:
-            self.spawner.handle_collisions(self.player, self.state)
-
-            # presents
-            picked = self.state.get("frame_collected_presents", 0)
-            if picked > 0:
-                self.shared["presents"] += picked
-                self.state["pickup_flash"] = max(self.state["pickup_flash"], 0.12)
-                if self.sounds.get("present"):
-                    self.sounds["present"].play()
-
-            # specials
-            specials = [n.lower() for n in self.state.get("frame_collected_specials", [])]
-            if specials:
-                if any(("carrot" in n) for n in specials):
-                    self.state["phase_kind"] = "carrot"
-                    self.state["phase_timer"] = 2.0
-                    self.state["phase_start_flash"] = 0.25
-                    self.player_hidden = True   # hide main character
-                    self._spawn_split_parts()
-                if any(("moose" in n) for n in specials):
-                    self.state["phase_kind"] = "moose"
-                    self.state["phase_timer"] = 2.0
-                    self.state["phase_start_flash"] = 0.25
-                    self.player.set_mode("moose")
-                if self.sounds.get("special"):
-                    self.sounds["special"].play()
-
-            # obstacle hits
             collide_fn = pygame.sprite.collide_circle_ratio(1.05)
             for ob in list(self.spawner.obstacles):
                 if collide_fn(self.player, ob):
@@ -739,16 +769,16 @@ class SnowyScene:
                     if self.sounds.get("hit"):
                         self.sounds["hit"].play()
 
-            # igloo pickup → open that igloo's specific minigame
-            touched_igloo = pygame.sprite.spritecollide(
-                self.player, self.igloos, dokill=True,
-                collided=pygame.sprite.collide_circle_ratio(1.15)
-            )
-            if touched_igloo:
-                ig = touched_igloo[0]
-                Mini = getattr(ig, "game_cls", random.choice(self.mini_kinds))
-                self.mini = Mini()
-                self.in_minigame = True
+        # igloo pickup → open that igloo's specific minigame
+        touched_igloo = pygame.sprite.spritecollide(
+            self.player, self.igloos, dokill=True,
+            collided=pygame.sprite.collide_circle_ratio(1.15)
+        )
+        if touched_igloo:
+            ig = touched_igloo[0]
+            Mini = getattr(ig, "game_cls", random.choice(self.mini_kinds))
+            self.mini = Mini()
+            self.in_minigame = True
 
         if self.shared["hearts"] <= 0:
             self.game_over = True

@@ -30,8 +30,9 @@ class TitleScene:
         self.bg_size = None
 
         # ปุ่มต่าง ๆ (กำหนดตำแหน่งตอน draw)
-        self.button_start = pg.Rect(0, 0, 180, 56)
-        self.button_howto = pg.Rect(0, 0, 300, 56)
+        self.button_start = pg.Rect(0, 0, 200, 60)
+        # Make HOW TO PLAY have more padding around text
+        self.button_howto = pg.Rect(0, 0, 360, 64)
 
     def _ensure_bg_scaled(self, surf):
         """ถ้า BG ยังไม่ scale ให้ตรงกับขนาดหน้าต่าง ก็ scale ใหม่"""
@@ -44,8 +45,11 @@ class TitleScene:
             self.bg_size = (w, h)
 
     def handle_event(self, ev):
-        if ev.type == pg.KEYDOWN and ev.key in (pg.K_RETURN, pg.K_KP_ENTER):
-            return {"action": "start_game"}
+        if ev.type == pg.KEYDOWN:
+            if ev.key in (pg.K_RETURN, pg.K_KP_ENTER, pg.K_SPACE):
+                return {"action": "start_game"}
+            if ev.key in (pg.K_h, pg.K_F1):
+                return {"action": "show_howto"}
         if ev.type == pg.MOUSEBUTTONDOWN and ev.button == 1:
             if self.button_start.collidepoint(ev.pos):
                 return {"action": "start_game"}
@@ -113,6 +117,12 @@ class HowToScene:
     def __init__(self, font):
         self.font = font
         self.small_font = pg.font.SysFont(None, 20)
+        self.medium_font = pg.font.SysFont("consolas", 24)
+        # scrolling state
+        self.scroll_y = 0.0
+        self._content_h = 0
+        self._last_viewport_h = 0
+        self._scroll_step = 60  # pixels per wheel notch / arrow key step
 
         if os.path.exists(BG_PATH):
             self.bg_original = pg.image.load(BG_PATH).convert()
@@ -124,37 +134,32 @@ class HowToScene:
         # ปุ่ม BACK
         self.button_back = pg.Rect(0, 0, 160, 46)
 
-        self.lines = [
-            "Use LEFT / RIGHT or A / D to move.",
-            "Press P to pause the game.",
-            "Avoid trees and obstacles.",
-            "Collect presents and special items.",
-            "Enter igloos to go to special maps.",
-            "In Hell mode, survive before the snowman melted",
-        ]
-
-        # โหลด icon สำหรับใช้ในข้อความ (โหลดครั้งเดียว)
+        # Assets for visual guidance
         self.tree_img = None
-        self.ice_img = None
+        self.present_img = None
         self.igloo_img = None
+        self.snowman_img = None
+        self.carrot_img = None
+        self.moose_img = None
+        self.icecube_img = None
+        self.iceshard_img = None
 
-        try:
-            img = pg.image.load(os.path.join("image", "Tree_1.png")).convert_alpha()
-            self.tree_img = pg.transform.scale(img, (32, 32))
-        except Exception as e:
-            print("[HowTo] Cannot load TreeOnFire_2.png:", e)
+        def _ld(name, w, h):
+            try:
+                img = pg.image.load(os.path.join("image", name)).convert_alpha()
+                return pg.transform.scale(img, (w, h))
+            except Exception as e:
+                print(f"[HowTo] Cannot load {name}:", e)
+                return None
 
-        try:
-            img = pg.image.load(os.path.join("image", "Present_1.png")).convert_alpha()
-            self.ice_img = pg.transform.scale(img, (28, 28))
-        except Exception as e:
-            print("[HowTo] Cannot load Icecube_1.png:", e)
-
-        try:
-            img = pg.image.load(os.path.join("image", "Igloo_2.png")).convert_alpha()
-            self.igloo_img = pg.transform.scale(img, (32, 32))
-        except Exception as e:
-            print("[HowTo] Cannot load Igloo_2.png:", e)
+        self.tree_img    = _ld("Tree_1.png", 32, 32)
+        self.present_img = _ld("Present_1.png", 28, 28)
+        self.igloo_img   = _ld("Igloo_2.png", 40, 40)
+        self.snowman_img = _ld("Snowman_idle2.png", 44, 44)
+        self.carrot_img  = _ld("Carrot_1.png", 36, 36)
+        self.moose_img   = _ld("Moose_item_1.png", 36, 36)
+        self.icecube_img = _ld("Icecube_1.png", 30, 30)
+        self.iceshard_img= _ld("IceShards_1.png", 40, 40)
 
     def _ensure_bg_scaled(self, surf):
         if not self.bg_original:
@@ -168,10 +173,52 @@ class HowToScene:
     def handle_event(self, ev):
         if ev.type == pg.KEYDOWN and ev.key in (pg.K_ESCAPE, pg.K_BACKSPACE, pg.K_RETURN):
             return {"action": "back_to_title"}
+        if ev.type == pg.KEYDOWN:
+            # scroll with arrows / PageUp/PageDown / Home/End
+            if ev.key == pg.K_DOWN:
+                self.scroll_y += self._scroll_step
+            elif ev.key == pg.K_UP:
+                self.scroll_y -= self._scroll_step
+            elif ev.key == pg.K_PAGEDOWN:
+                self.scroll_y += self._scroll_step * 3
+            elif ev.key == pg.K_PAGEUP:
+                self.scroll_y -= self._scroll_step * 3
+            elif ev.key == pg.K_END:
+                self.scroll_y = float(max(0, self._content_h - self._last_viewport_h))
+            elif ev.key == pg.K_HOME:
+                self.scroll_y = 0.0
+            self._clamp_scroll()
         if ev.type == pg.MOUSEBUTTONDOWN and ev.button == 1:
             if self.button_back.collidepoint(ev.pos):
                 return {"action": "back_to_title"}
+        # Mouse wheel scroll
+        if hasattr(pg, "MOUSEWHEEL") and ev.type == pg.MOUSEWHEEL:
+            # In pygame, positive y is wheel up
+            self.scroll_y -= ev.y * self._scroll_step
+            self._clamp_scroll()
         return None
+
+    def _clamp_scroll(self):
+        if self._last_viewport_h <= 0:
+            self.scroll_y = 0.0
+            return
+        max_scroll = max(0, self._content_h - self._last_viewport_h)
+        self.scroll_y = max(0.0, min(float(max_scroll), float(self.scroll_y)))
+
+    def _wrap_lines(self, text: str, font, max_w: int):
+        words = text.split()
+        lines = []
+        cur = ""
+        for w in words:
+            test = (cur + " " + w).strip()
+            if font.size(test)[0] <= max_w or not cur:
+                cur = test
+            else:
+                lines.append(cur)
+                cur = w
+        if cur:
+            lines.append(cur)
+        return lines
 
     def draw(self, surf):
         w, h = surf.get_size()
@@ -205,67 +252,142 @@ class HowToScene:
         tpos = title.get_rect(center=(panel_rect.centerx, panel_rect.y + 40))
         surf.blit(title, tpos)
 
-        # ------- แสดงข้อความทีละบรรทัด พร้อม icon แทรกกลางประโยค -------
-        y = tpos.bottom + 20
+        # Prepare a scrollable content surface inside the panel
+        padding = 24
+        view_x = panel_rect.x + padding
+        view_y = tpos.bottom + 12
+        view_w = panel_rect.w - padding*2
+        # Reserve space above BACK button and a little bottom padding
+        back_space = 70
+        view_h = max(60, panel_rect.bottom - back_space - view_y)
+        self._last_viewport_h = view_h
 
-        for i, line in enumerate(self.lines):
+        content = pg.Surface((view_w, 2000), pg.SRCALPHA)  # tall; we'll track y and clip later
+        cx, cy = 6, 0
 
-            # บรรทัด 3 — Avoid [tree] and obstacles.
-            if i == 2 and self.tree_img is not None:
-                left = self.small_font.render("Avoid", True, (20, 40, 70))
-                right = self.small_font.render("and obstacles.", True, (20, 40, 70))
+        def draw_icon_line(icon, text):
+            nonlocal cy
+            ix = cx
+            # text wrapping
+            max_w = view_w - 100  # provisional, will refine after icon width
+            lines = self._wrap_lines(text, self.small_font, max_w)
+            font_h = self.small_font.get_height()
+            line_slot = font_h + 8
+            text_block_h = max(line_slot, len(lines) * line_slot)
+            icon_w = icon.get_width() if icon else 0
+            icon_h = icon.get_height() if icon else 0
+            block_h = max(text_block_h, icon_h)
 
-                # วาด: LEFT → ICON → RIGHT
-                base_x = panel_rect.x + 40
-                surf.blit(left, (base_x, y))
-                surf.blit(self.tree_img, (base_x + left.get_width() + 10, y - 4))
-                surf.blit(
-                    right,
-                    (base_x + left.get_width() + 10 + self.tree_img.get_width() + 8, y)
-                )
+            # place icon vertically centered in block
+            if icon:
+                iy = cy + (block_h - icon_h) // 2
+                content.blit(icon, (ix, iy))
+                ix += icon_w + 10
 
-                y += 36
-                continue
+            # recompute wrapping with final left edge
+            max_w = view_w - (ix - cx)
+            lines = self._wrap_lines(text, self.small_font, max_w)
+            # top offset to center text block within block_h
+            ty = cy + (block_h - len(lines) * line_slot) // 2
+            for ln in lines:
+                surf_line = self.small_font.render(ln, True, (20, 40, 70))
+                # center text within its line slot
+                content.blit(surf_line, (ix, ty + (line_slot - font_h)//2))
+                ty += line_slot
 
-            # บรรทัด 4 — Collect [present] and special items.
-            if i == 3 and self.ice_img is not None:
-                left = self.small_font.render("Collect", True, (20, 40, 70))
-                right = self.small_font.render("and special items.", True, (20, 40, 70))
+            cy += block_h + 8
 
-                base_x = panel_rect.x + 40
-                surf.blit(left, (base_x, y))
-                surf.blit(self.ice_img, (base_x + left.get_width() + 10, y - 2))
-                surf.blit(
-                    right,
-                    (base_x + left.get_width() + 10 + self.ice_img.get_width() + 8, y)
-                )
+        def draw_icons_line(icons, text):
+            nonlocal cy
+            icons = [ic for ic in (icons or []) if ic]
+            ix = cx
+            font_h = self.small_font.get_height()
+            line_slot = font_h + 8
 
-                y += 36
-                continue
+            # find max icon height and total icon width for left area
+            max_icon_h = max((ic.get_height() for ic in icons), default=0)
+            icons_w = sum(ic.get_width() for ic in icons) + (8 * max(0, len(icons)-1))
 
-            # บรรทัด 5 — Enter [igloo] to go to special maps.
-            if i == 4 and self.igloo_img is not None:
-                left = self.small_font.render("Enter", True, (20, 40, 70))
-                right = self.small_font.render("to go to special maps.", True, (20, 40, 70))
+            # wrap text given remaining width
+            max_w = view_w - (icons_w + 10)
+            lines = self._wrap_lines(text, self.small_font, max_w)
+            text_block_h = max(line_slot, len(lines) * line_slot)
+            block_h = max(text_block_h, max_icon_h)
 
-                base_x = panel_rect.x + 40
-                surf.blit(left, (base_x, y))
-                surf.blit(self.igloo_img, (base_x + left.get_width() + 10, y - 4))
-                surf.blit(
-                    right,
-                    (base_x + left.get_width() + 10 + self.igloo_img.get_width() + 8, y)
-                )
+            # draw icons vertically centered in block
+            for idx, ic in enumerate(icons):
+                iy = cy + (block_h - ic.get_height()) // 2
+                content.blit(ic, (ix, iy))
+                ix += ic.get_width() + 8
+            ix += 2  # extra breathing room before text
 
-                y += 36
-                continue
+            # draw wrapped text centered in block
+            ty = cy + (block_h - len(lines) * line_slot) // 2
+            for ln in lines:
+                surf_line = self.small_font.render(ln, True, (20, 40, 70))
+                content.blit(surf_line, (ix, ty + (line_slot - font_h)//2))
+                ty += line_slot
 
-            # บรรทัดอื่น — ปกติ (ไม่มี icon)
-            txt = self.small_font.render(line, True, (20, 40, 70))
-            surf.blit(txt, (panel_rect.x + 40, y))
-            y += 30
+            cy += block_h + 8
+
+        # Section: Movement
+        head = self.medium_font.render("Movement", True, (40, 80, 160))
+        content.blit(head, (cx, cy)); cy += 32
+        box = pg.Rect(cx, cy, min(320, view_w-12), 44)
+        _round_rect(content, box, (235, 242, 255), radius=8)
+        _round_rect(content, box, (120, 160, 220), radius=8, width=2)
+        tip = self.small_font.render("Use LEFT/RIGHT or A/D to switch lanes", True, (20, 40, 70))
+        content.blit(tip, (box.x + 8, box.y + 12)); cy += 54
+        draw_icons_line([self.tree_img, self.iceshard_img], "Dodge obstacles")
+        draw_icon_line(self.present_img, "Collect presents to increase your score")
+
+        # Section: Power-ups
+        head = self.medium_font.render("Power-ups", True, (40, 80, 160))
+        content.blit(head, (cx, cy)); cy += 32
+        draw_icon_line(self.carrot_img, "Carrot: Split into parts; ignore obstacles; still collect presents.")
+        draw_icon_line(self.moose_img,  "Moose: Speed boost; ignore obstacles; still collect presents.")
+
+        # Section: Igloos & Hell
+        head = self.medium_font.render("Igloos & Hell", True, (40, 80, 160))
+        content.blit(head, (cx, cy)); cy += 32
+        draw_icon_line(self.igloo_img, "Enter an igloo to play a mini-game, if you win, you will get bonus presents.")
+        # reserve space equal to igloo icon so text aligns with the line above
+        placeholder = pg.Surface(self.igloo_img.get_size(), pg.SRCALPHA) if self.igloo_img else pg.Surface((40, 40), pg.SRCALPHA)
+        draw_icon_line(placeholder, "After done playing mini-game, you will enter the hell mode")
+        draw_icon_line(self.icecube_img, "In hell mode, survive as the melt bar drains. Collect icecubes to extend time.")
+
+        # Section: Controls
+        head = self.medium_font.render("Controls", True, (40, 80, 160))
+        content.blit(head, (cx, cy)); cy += 32
+        for ln in self._wrap_lines("Pause/Resume: P    Back: ESC / Backspace", self.small_font, view_w-10):
+            content.blit(self.small_font.render(ln, True, (20, 40, 70)), (cx, cy))
+            cy += 28
+
+        # Store content height and clamp scroll
+        self._content_h = cy
+        self._clamp_scroll()
+
+        # Blit the scrollable area with clipping
+        prev_clip = surf.get_clip()
+        surf.set_clip(pg.Rect(view_x, view_y, view_w, view_h))
+        surf.blit(content, (view_x, view_y - int(self.scroll_y)))
+        surf.set_clip(prev_clip)
+
+        # Draw a simple scrollbar on the right inside panel
+        if self._content_h > view_h:
+            bar_x = panel_rect.right - 10 - 6
+            bar_y = view_y
+            bar_w = 6
+            bar_h = view_h
+            pg.draw.rect(surf, (200, 210, 230), (bar_x, bar_y, bar_w, bar_h), border_radius=3)
+            ratio = view_h / max(1, self._content_h)
+            thumb_h = max(24, int(bar_h * ratio))
+            max_scroll = max(1, self._content_h - view_h)
+            thumb_y = bar_y + int((bar_h - thumb_h) * (self.scroll_y / max_scroll))
+            pg.draw.rect(surf, (120, 160, 220), (bar_x, thumb_y, bar_w, thumb_h), border_radius=3)
 
         # ปุ่ม BACK + hover
-        self.button_back.center = (panel_rect.centerx, panel_rect.bottom - 40)
+        self.button_back.center = (panel_rect.centerx, panel_rect.bottom - 30)
 
         mx, my = pg.mouse.get_pos()
         hovered = self.button_back.collidepoint(mx, my)

@@ -30,12 +30,12 @@ PLAYER_TWEEN = 14.0       # smoothing for lane movement
 PLAYER_Y = int(HEIGHT * 0.78)
 
 # Background scrolling speed (vertical)
-BG_SCROLL_SPEED_BASE = 400     # starting pixels per second (increased for a faster start)
-BG_SCROLL_SPEED_MAX = 1000      # cap speed to avoid absurd values
+BG_SCROLL_SPEED_BASE = 280     # starting pixels per second (slower for easier play)
+BG_SCROLL_SPEED_MAX = 720      # lower cap to keep overall speed manageable
 # Old model used BG_ACCEL_PER_SEC; that required (MAX-BASE)/ACCEL seconds to hit max (≈27.5s for 800).
 # New model: reach max within TIME_TO_MAX seconds regardless of values.
-TIME_TO_MAX = 60.0             # slower ramp to max speed (increase if still too fast)
-SPEED_CURVE = 0.6             # faster early growth than linear (<1 speeds up early ramp)
+TIME_TO_MAX = 40.0             # hit max speed by 40s to align with igloo spawn
+SPEED_CURVE = 0.85             # gentler early growth (closer to linear)
 
 # --- Pygame init ---
 pygame.init()
@@ -128,7 +128,7 @@ HELL_ASSET_SIZE_OVERRIDES = {
 # Transition items
 IGLOO_PATH = Path("image/Igloo_2.png")
 IGLOO_SIZE = 140
-IGLOO_TRIGGER_TIME = 70.0   # seconds survived before igloos appear in all lanes
+IGLOO_TRIGGER_TIME = 40.0   # seconds survived before igloos appear in all lanes
 
 # Hell-phase tuning
 HELL_SPECIAL_INTERVAL_RANGE = (2.0, 4.0)  # make specials (icecubes) appear frequently in hell
@@ -296,7 +296,7 @@ def spawn_igloos(current_speed):
         ig = Igloo(
             img,
             lane,
-            current_speed * 0.35 + 140,  # give igloos their own downward speed so they are reachable soon
+            max(current_speed * 0.5 + 180, 560),  # faster descent so igloos reach player quickly
             adjusted_lane_x=adjusted_lane_x,
             offscreen_buffer=OFFSCREEN_BUFFER,
             relative_scroll_mode=True,      # move with background + extra speed
