@@ -877,20 +877,24 @@ class SnowyScene:
     def _spawn_split_parts(self):
         if not self.split_images:
             return
-        # clear previous parts if any
-        if self.carrot_parts:
-            for h in self.carrot_parts:
-                h.kill()
-            self.carrot_parts.clear()
+        # clear previous parts
+        for part in self.carrot_parts:
+            part.kill()
+        self.carrot_parts.clear()
 
-        # one part per lane: Head, Upper, Lower (or however many we loaded)
-        y = PLAYER_Y - 110
+        y = PLAYER_Y - 110  # vertical start
+        mid_x = self.lane_centers[len(self.lane_centers)//2]  # center lane
+
+        # horizontal spacing (pixels)
+        spacing = 210  # smaller → parts closer together
+
+        num_parts = len(self.split_images)
+        # calculate horizontal offsets: center the whole group around mid_x
+        offsets = [((i - (num_parts-1)/2) * spacing) for i in range(num_parts)]
+
         self.carrot_parts = []
-        for lane_idx, img in enumerate(self.split_images):
-            if lane_idx >= len(self.lane_centers):
-                break
-            cx = int(self.lane_centers[lane_idx])
-            spr = _SplitPart(self, img, (cx, y))
+        for img, dx in zip(self.split_images, offsets):
+            spr = _SplitPart(self, img, (mid_x + dx, y))
             self.fx_sprites.add(spr)
             self.carrot_parts.append(spr)
 
@@ -956,7 +960,16 @@ class _SplitPart(pygame.sprite.Sprite):
 
         self.image = self.base_image.copy()
         self.image.fill((255,255,255,alpha), special_flags=pygame.BLEND_RGBA_MULT)
-
+        collide_fn = pygame.sprite.collide_circle_ratio(1.0)
+        for present in list(self.scene.spawner.collectibles):
+            if collide_fn(self, present):
+                present.kill()
+                # directly update shared score
+                self.scene.shared["presents"] += 1
+                # optionally trigger pickup flash
+                self.scene.state["pickup_flash"] = max(self.scene.state.get("pickup_flash", 0.0), 0.12)
+                if self.scene.sounds.get("present"):
+                    self.scene.sounds["present"].play()
 
 class _Player(pygame.sprite.Sprite):
     def __init__(self, adjusted_lane_x, start_lane=1):
