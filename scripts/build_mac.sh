@@ -1,7 +1,7 @@
 #!/usr/bin/env zsh
 set -euo pipefail
 
-# Build SnowSurvivor macOS .app using PyInstaller
+# Build SnowSurvivor macOS .app using PyInstaller (CLI fallback when spec is missing)
 REPO_DIR=${0:A:h}/..
 cd "$REPO_DIR"
 
@@ -18,8 +18,19 @@ fi
 # Clean previous builds
 rm -rf build dist
 
-# Build via spec (bundles image/ and sound/ from olaf-v2)
-pyinstaller snow_survivor.spec
+# If a spec file exists use it, otherwise use the CLI (bundles image/ and sound/ from olaf-v2)
+if [ -f snow_survivor.spec ]; then
+  pyinstaller snow_survivor.spec
+else
+  pyinstaller \
+    --noconfirm \
+    --clean \
+    --name SnowSurvivor \
+    --add-data "olaf-v2/image:image" \
+    --add-data "olaf-v2/sound:sound" \
+    --windowed \
+    olaf-v2/run.py
+fi
 
 # Prepare release folder
 APP_OUT="dist/SnowSurvivor-mac"
