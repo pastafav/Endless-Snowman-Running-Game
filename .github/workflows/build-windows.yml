@@ -34,8 +34,22 @@ jobs:
         run: |
           $out = 'dist\SnowSurvivor-win'
           if (Test-Path $out) {
+            # create a runtime README to help end-users (VC++ redistributable, extract before running, AV)
+            $readme = @'
+SnowSurvivor (Windows) - runtime notes
+
+- Extract the zip completely before running the EXE. Do NOT run from inside the zip.
+- If you see "failed to load python DLL", make sure the python*.dll files exist next to the EXE.
+- If DLLs are missing, check your antivirus/quarantine and restore any quarantined files.
+- Install the Microsoft Visual C++ Redistributable for Visual Studio 2015-2022 (x64):
+  https://learn.microsoft.com/en-US/cpp/windows/latest-supported-vc-redist
+- If SmartScreen or antivirus blocks the EXE, instruct users to right-click -> Open or add an exception.
+'
+            $readmePath = Join-Path $out 'README_WINDOWS.txt'
+            Set-Content -Path $readmePath -Value $readme -Encoding UTF8
+
             Compress-Archive -Path $out\* -DestinationPath SnowSurvivor-win.zip -Force
-            Write-Host "Created SnowSurvivor-win.zip"
+            Write-Host "Created SnowSurvivor-win.zip (includes README_WINDOWS.txt)"
           } else {
             Write-Host "Expected output folder not found: $out"
             dir dist -Recurse
