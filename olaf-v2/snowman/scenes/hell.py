@@ -145,6 +145,9 @@ class HellScene:
             special_score_bonus=5,
         )
 
+        # 🔒 Smallest change: disable spawning of special items in Hell
+        self.spawner._spawn_special = lambda current_speed: None
+
         # ── Sound ────────────────────────────────────────────────────────────
         if pygame.mixer.get_init() is None:
             try:
@@ -285,8 +288,6 @@ class HellScene:
             
         if self.state["melt"] <= 0.0:
             self.game_over = True
-
-        
 
         # speed model
         self.elapsed += dt
