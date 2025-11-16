@@ -334,12 +334,13 @@ def main():
                     show_pause_menu = True
                     # อย่าส่ง event นี้เข้า scene เพื่อไม่ให้ scene pause ซ้ำ
                     continue
-                elif event.key in (pygame.K_1, pygame.K_F1):
+                elif event.key == pygame.K_s:
                     manager.switch_to("snowy", reset=True)
                     elapsed_since_switch = 0.0
-                elif event.key in (pygame.K_2, pygame.K_F2):
+
+                elif event.key == pygame.K_h:
                     manager.switch_to("hell", reset=True)
-                    elapsed_since_switch = 0.0
+                    elapsed_since_switch = 0.0  
 
             # ส่ง event ไปยัง scene ของเกม
             manager.handle_event(event)
