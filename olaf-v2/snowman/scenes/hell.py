@@ -44,8 +44,11 @@ OBSTACLE_SPEED = 260
 PRESENT_SPEED  = 250
 SPECIAL_SPEED  = 240
 
-OBSTACLE_INTERVAL_RANGE = (0.70, 1.20)
-PRESENT_INTERVAL_RANGE  = (0.40, 0.80)
+# Spawn obstacles more frequently to raise difficulty
+OBSTACLE_INTERVAL_RANGE = (0.45, 0.85)
+# Fewer ice cubes by default (but still enough):
+# Base spawn every ~1.30–2.10s, accelerates slightly with speed
+PRESENT_INTERVAL_RANGE  = (1.30, 2.10)
 SPECIAL_INTERVAL_RANGE  = (7.0, 12.0)
 SPAWN_ACCEL_FACTOR = 0.60
 OFFSCREEN_BUFFER   = 40
@@ -55,6 +58,10 @@ RELATIVE_EXTRA_SPEED_FACTOR = 1.0
 # Melt survival
 MELT_START_SECONDS = 2.0
 ICE_ADD_SECONDS    = 1.0
+
+# When melt is critically low, gently force the next cube sooner
+LOW_MELT_SAFETY_THRESHOLD = 1.2   # seconds
+LOW_MELT_FORCE_NEXT       = 0.28  # seconds until next present at most
 
 # ── Moose animation assets (same behavior as Snowy) ──────────────────────────
 MOOSE_RUN_1      = Path("image/Moose_run_1.png")
@@ -144,8 +151,7 @@ class HellScene:
             present_score_value=1,
             special_score_bonus=5,
         )
-
-        # 🔒 Smallest change: disable spawning of special items in Hell
+        # Disable spawning of special items in Hell (no moose/carrot here)
         self.spawner._spawn_special = lambda current_speed: None
 
         # ── Sound ────────────────────────────────────────────────────────────
@@ -300,6 +306,12 @@ class HellScene:
         self.bg_offset -= current_speed * dt
 
         # spawn/update
+        # If melt is critically low, ensure a present spawns very soon
+        if self.state.get("melt", 0.0) <= LOW_MELT_SAFETY_THRESHOLD:
+            try:
+                self.spawner.next_present_time = min(self.spawner.next_present_time, LOW_MELT_FORCE_NEXT)
+            except Exception:
+                pass
         self.spawner.update(dt, current_speed)
         for spr in list(self.all_sprites):
             if isinstance(spr, FallingSprite): spr.update(dt, current_speed)

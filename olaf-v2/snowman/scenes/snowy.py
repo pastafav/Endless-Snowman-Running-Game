@@ -521,6 +521,9 @@ class SnowyScene:
             "phase_kind": None, "phase_timer": 0.0, "phase_start_flash": 0.0,
             "frame_collected_presents": 0, "frame_collected_specials": [],
             "active_buff": None,
+            # Post-phase grace: obstacle immunity + blink
+            "grace_timer": 0.0,
+            "grace_blink_t": 0.0,
         }
 
         self.show_start = False
@@ -567,6 +570,7 @@ class SnowyScene:
             "slow_timer": 0.0, "hit_flash": 0.0, "pickup_flash": 0.0,
             "phase_kind": None, "phase_timer": 0.0, "phase_start_flash": 0.0,
             "frame_collected_presents": 0, "frame_collected_specials": [], "active_buff": None,
+            "grace_timer": 0.0, "grace_blink_t": 0.0,
         })
         self.show_start = False
         self.paused = False
@@ -631,16 +635,29 @@ class SnowyScene:
             if self.state.get(k, 0.0) > 0.0:
                 self.state[k] = max(0.0, self.state[k] - dt)
                 if k == "phase_timer" and self.state["phase_timer"] == 0.0:
-                    if self.state.get("phase_kind") == "moose":
+                    ended_kind = self.state.get("phase_kind")
+                    if ended_kind == "moose":
                         self.player.set_mode("normal")
-                    if self.state.get("phase_kind") == "carrot" and self.carrot_parts:
+                    if ended_kind == "carrot" and self.carrot_parts:
                         for h in self.carrot_parts:
                             h.begin_fade_out()
                         self.carrot_parts.clear()
                         self.player_hidden   = False
                         self.post_carrot_gap = 2.0   # 1 second no items after split ends
+                    # Start post-phase obstacle immunity + blink
+                    if ended_kind in ("moose", "carrot"):
+                        self.state["grace_timer"] = 1.0
+                        self.state["grace_blink_t"] = 0.0
                     self.state["phase_kind"] = None
                     self.state["active_buff"] = None
+
+        # decrement grace/immunity timer and accumulate blink time
+        if self.state.get("grace_timer", 0.0) > 0.0:
+            self.state["grace_timer"] = max(0.0, self.state["grace_timer"] - dt)
+            self.state["grace_blink_t"] = self.state.get("grace_blink_t", 0.0) + dt
+        else:
+            # keep blink accumulator tidy when not blinking
+            self.state["grace_blink_t"] = 0.0
 
         # speed model
         self.elapsed += dt
@@ -757,8 +774,8 @@ class SnowyScene:
             if self.sounds.get("special"):
                 self.sounds["special"].play()
 
-        # obstacle hits only when not phased
-        if self.state["phase_timer"] <= 0.0:
+        # obstacle hits only when not phased and not in post-phase grace
+        if self.state["phase_timer"] <= 0.0 and self.state.get("grace_timer", 0.0) <= 0.0:
             collide_fn = pygame.sprite.collide_circle_ratio(1.05)
             for ob in list(self.spawner.obstacles):
                 if collide_fn(self.player, ob):
@@ -791,7 +808,16 @@ class SnowyScene:
 
         # draw main player only if not hidden by carrot effect
         if not self.player_hidden:
-            screen.blit(self.player.image, self.player.rect)
+            # Blink while in post-phase grace: toggle visibility ~6 times/sec
+            gt = float(self.state.get("grace_timer", 0.0))
+            if gt > 0.0:
+                bt = float(self.state.get("grace_blink_t", 0.0))
+                # Visible on even toggles, hidden on odd toggles
+                toggle = int(bt / 0.16) % 2
+                if toggle == 0:
+                    screen.blit(self.player.image, self.player.rect)
+            else:
+                screen.blit(self.player.image, self.player.rect)
 
         y = 8
         screen.blit(self.font.render("SNOWY", True, (30, 30, 30)), (10, y)); y += 22
